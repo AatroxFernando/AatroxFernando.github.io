@@ -74,7 +74,7 @@
   .badge.obr { background: #ff4444; } .badge.opc { background: #ffa500; }
 
   .preview { position: relative; margin-bottom: 10px; }
-  .preview img { width: 100%; height: 130px; object-fit: cover; border-radius: 8px; border: 1px solid #ddd; display: block; }
+  .preview img { width: 100%; height: 170px; object-fit: contain; background: #263238; border-radius: 8px; border: 1px solid #ddd; display: block; cursor: zoom-in; }
   .remover {
     position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; border-radius: 50%;
     border: 0; background: #ff4444; color: #fff; font-size: 18px; cursor: pointer; line-height: 30px;
@@ -94,6 +94,28 @@
   .botoes-foto .btn-foto { flex: 1; padding: 13px 6px; }
   .btn-foto.camera { background: #2e7d32; }
   .btn-foto.camera:active { background: #1b5e20; }
+  button.btn-foto { border: 0; font-family: inherit; width: 100%; }
+  /* ----- Câmera ao vivo (igual Timestamp Camera) ----- */
+  .cam { position: fixed; inset: 0; z-index: 60; background: #000; display: none; }
+  .cam.mostrar { display: block; }
+  .cam video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+  .cam-topo { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 10px; padding: max(12px, env(safe-area-inset-top)) 14px 12px; background: linear-gradient(rgba(0,0,0,.75), transparent); color: #fff; font-weight: 700; font-size: 15px; }
+  .cam-topo span { flex: 1; }
+  .cam-topo button { border: 0; background: rgba(255,255,255,.25); color: #fff; width: 42px; height: 42px; border-radius: 50%; font-size: 20px; cursor: pointer; }
+  .cam-gps { position: absolute; left: 50%; transform: translateX(-50%); top: calc(max(12px, env(safe-area-inset-top)) + 56px); padding: 6px 12px; border-radius: 16px; font-size: 13px; font-weight: 700; color: #fff; white-space: nowrap; }
+  .cam-gps.ok { background: rgba(46,125,50,.92); }
+  .cam-gps.fraco { background: rgba(245,124,0,.92); }
+  .cam-gps.sem { background: rgba(198,40,40,.92); }
+  .cam-carimbo { position: absolute; right: 14px; bottom: calc(max(24px, env(safe-area-inset-bottom)) + 112px); text-align: right; color: #fff; font: bold 18px Arial, Helvetica, sans-serif; line-height: 1.35; text-shadow: 0 0 3px #000, 0 0 3px #000, 1px 1px 2px #000; }
+  .cam-base { position: absolute; left: 0; right: 0; bottom: 0; padding: 20px 0 max(24px, env(safe-area-inset-bottom)); display: flex; justify-content: center; background: linear-gradient(transparent, rgba(0,0,0,.75)); }
+  .cam-base button { width: 78px; height: 78px; border-radius: 50%; border: 5px solid #fff; background: rgba(255,255,255,.35); cursor: pointer; }
+  .cam-base button:disabled { opacity: .35; }
+  .cam-base button:active { background: #fff; }
+  .cam-erro { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 30px; color: #fff; text-align: center; font-size: 15px; }
+  .cam-erro .btn-foto { max-width: 300px; width: 100%; }
+  .visor { position: fixed; inset: 0; z-index: 70; background: rgba(0,0,0,.94); display: none; align-items: center; justify-content: center; }
+  .visor.mostrar { display: flex; }
+  .visor img { max-width: 100%; max-height: 100%; object-fit: contain; }
 
   .resumo { background: #f8f9fa; border-radius: 10px; padding: 12px 14px; font-size: 14px; margin-bottom: 15px; }
   .resumo div { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #e3e6ea; }
@@ -248,6 +270,19 @@
       <div class="erro-login" id="erroLogin"></div>
     </div>
   </div>
+  <div class="cam" id="cam">
+    <video id="camVideo" playsinline muted autoplay></video>
+    <div class="cam-erro" id="camErro">
+      <div>Não foi possível abrir a câmera dentro do app (permissão negada ou celular sem suporte).</div>
+      <label class="btn-foto camera">📷 Usar a câmera do celular<input type="file" accept="image/*" capture="environment" data-camera="1" id="camAlternativa"></label>
+      <div style="font-size:13px;opacity:.85">A foto também sai carimbada com data, hora e UTM.</div>
+    </div>
+    <div class="cam-topo"><span id="camTitulo"></span><button type="button" id="camFechar" aria-label="Fechar">✕</button></div>
+    <div class="cam-gps sem" id="camGps"></div>
+    <div class="cam-carimbo" id="camCarimbo"></div>
+    <div class="cam-base"><button type="button" id="camDisparo" aria-label="Tirar foto"></button></div>
+  </div>
+  <div class="visor" id="visor"><img id="visorImg" alt="Foto"></div>
   <div class="equipe-atual" id="equipeAtual" style="display:none"></div>
 
   <div id="formulario">
@@ -698,8 +733,8 @@
 
   // Foto tirada pela câmera do app: reduz, escreve o carimbo e grava o GPS no arquivo
   var ultimoSemGPS = false;
-  async function carimbar(file) {
-    var pos = await posicaoRecente();
+  async function carimbar(file, posFixa) {
+    var pos = posFixa !== undefined ? posFixa : await posicaoRecente();
     var agora = new Date();
     var img;
     try { img = await carregarImagem(file); } catch (e) { return file; }
@@ -732,11 +767,94 @@
     return new Blob([jpeg.slice(0, 2), exifGPS(pos.coords.latitude, pos.coords.longitude, dataExif), jpeg.slice(2)], { type: 'image/jpeg' });
   }
 
+  // ===================== CÂMERA AO VIVO (mostra data, hora e UTM antes de tirar) =====================
+  var cam = { stream: null, alvo: null, relogio: null };
+  function posFresca() { return gps.ultimo && Date.now() - gps.ultimo.timestamp < 120000 ? gps.ultimo : null; }
+
+  async function abrirCamera(n, p, slot) {
+    cam.alvo = { n: n, p: p, slot: slot };
+    ligarGPS();
+    var item = slot === 'hastes' ? 'Haste' :
+      ((SLOTS.concat(DITAIS, EQUIP).filter(function (s) { return s.id === slot; })[0] || {}).nome || slot);
+    $('camTitulo').textContent = (p === 'ditais' ? 'DITAIS' : p === 'equip' ? 'Equipamento E' + n :
+      'P' + n + ' · ' + p.toUpperCase()) + ' · ' + item;
+    var alt = $('camAlternativa');
+    alt.dataset.poste = n; alt.dataset.periodo = p; alt.dataset.slot = slot;
+    $('camErro').style.display = 'none';
+    $('camDisparo').disabled = true;
+    $('cam').classList.add('mostrar');
+    atualizarCarimboAoVivo();
+    clearInterval(cam.relogio);
+    cam.relogio = setInterval(atualizarCarimboAoVivo, 500);
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('sem suporte');
+      var s = await navigator.mediaDevices.getUserMedia({ audio: false,
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+      if (!$('cam').classList.contains('mostrar')) { s.getTracks().forEach(function (t) { t.stop(); }); return; }
+      cam.stream = s;
+      var v = $('camVideo');
+      v.srcObject = s;
+      try { await v.play(); } catch (e) {}
+      $('camDisparo').disabled = false;
+    } catch (e) {
+      $('camErro').style.display = 'flex';
+    }
+  }
+
+  function fecharCamera() {
+    clearInterval(cam.relogio);
+    if (cam.stream) cam.stream.getTracks().forEach(function (t) { t.stop(); });
+    cam.stream = null;
+    $('camVideo').srcObject = null;
+    $('cam').classList.remove('mostrar');
+  }
+
+  function atualizarCarimboAoVivo() {
+    var pos = posFresca(), agora = new Date();
+    var z = function (x) { return String(x).padStart(2, '0'); };
+    var l1 = z(agora.getDate()) + '/' + z(agora.getMonth() + 1) + '/' + agora.getFullYear() + ' ' +
+      z(agora.getHours()) + ':' + z(agora.getMinutes()) + ':' + z(agora.getSeconds());
+    var l2;
+    if (pos) { var u = paraUTM(pos.coords.latitude, pos.coords.longitude); l2 = 'UTM ' + u.zona + '  ' + u.e + ' E  ' + u.n + ' N'; }
+    else l2 = gps.negado ? 'UTM: localização bloqueada' : 'UTM: buscando GPS...';
+    $('camCarimbo').innerHTML = esc(l1) + '<br>' + esc(l2);
+    var g = $('camGps');
+    if (pos) {
+      var prec = Math.round(pos.coords.accuracy);
+      g.textContent = '📍 GPS ok · precisão ±' + prec + ' m';
+      g.className = 'cam-gps ' + (prec <= 30 ? 'ok' : 'fraco');
+    } else {
+      g.textContent = gps.negado ? '⚠️ Localização bloqueada: permita nas configurações' : '📍 Buscando GPS...';
+      g.className = 'cam-gps sem';
+    }
+  }
+
+  async function capturar() {
+    var v = $('camVideo');
+    if (!cam.stream || !v.videoWidth) return;
+    var pos = posFresca(), a = cam.alvo;
+    var cv = document.createElement('canvas');
+    cv.width = v.videoWidth; cv.height = v.videoHeight;
+    cv.getContext('2d').drawImage(v, 0, 0);
+    $('camDisparo').disabled = true;
+    var bruto = await new Promise(function (r) { cv.toBlob(r, 'image/jpeg', 0.95); });
+    fecharCamera();
+    if (!bruto) { mensagem('Não foi possível capturar a foto.', 'erro'); return; }
+    var foto = await carimbar(bruto, pos);
+    if (a.slot === 'hastes') poste(a.n)[a.p].hastes.push(foto); else alvo(a.n, a.p)[a.slot] = foto;
+    if (eNaTela(a.n, a.p)) renderSlots();
+    if (a.p === 'equip') renderEquips();
+    houveMudanca();
+    if (pos) mensagem('✅ Foto carimbada com data, hora e UTM. Toque na miniatura para ver.', 'sucesso');
+    else mensagem('⚠️ Foto carimbada sem coordenadas: o GPS ainda não tinha sinal.', 'erro');
+  }
+
+  function abrirVisor(src) { $('visorImg').src = src; $('visor').classList.add('mostrar'); }
+
   // Dois botões por item: câmera do app (com carimbo) e galeria
   function botoesFoto(at, tem, multiplo) {
     return '<div class="botoes-foto">' +
-      '<label class="btn-foto camera">📷 ' + (tem ? 'Tirar de novo' : 'Tirar foto') +
-      '<input type="file" accept="image/*" capture="environment" data-camera="1"' + at + '></label>' +
+      '<button type="button" class="btn-foto camera" data-acao="camera"' + at + '>📷 ' + (tem ? 'Tirar de novo' : 'Tirar foto') + '</button>' +
       '<label class="btn-foto">🖼️ Galeria' +
       '<input type="file" accept="image/*"' + (multiplo ? ' multiple' : '') + at + '></label></div>';
   }
@@ -1139,7 +1257,10 @@
     });
 
     document.addEventListener('click', function (e) {
-      if (e.target.closest('.btn-foto.camera')) ligarGPS(); // já vai buscando o GPS enquanto a câmera abre
+      var bc = e.target.closest('[data-acao="camera"]');
+      if (bc) { abrirCamera(parseInt(bc.dataset.poste, 10), bc.dataset.periodo, bc.dataset.slot); return; }
+      var pv = e.target.closest('.preview img');
+      if (pv) { abrirVisor(pv.src); return; }
       var bf = e.target.closest('[data-acao="remover-fila"]');
       if (bf) { removerDaFila(bf.dataset.id); return; }
       if (estado.enviando) return;
@@ -1804,6 +1925,12 @@
 
     // Código da equipe: pede uma vez por celular
     $('btnEntrar').onclick = entrar;
+    // Câmera ao vivo
+    $('camDisparo').onclick = capturar;
+    $('camFechar').onclick = fecharCamera;
+    $('camAlternativa').parentNode.addEventListener('click', function () { ligarGPS(); setTimeout(fecharCamera, 400); });
+    $('visor').onclick = function () { $('visor').classList.remove('mostrar'); };
+    document.addEventListener('visibilitychange', function () { if (document.hidden && cam.stream) fecharCamera(); });
     $('codigoEquipe').addEventListener('keydown', function (e) { if (e.key === 'Enter') entrar(); });
     $('btnCancelarLogin').onclick = function () { $('telaLogin').classList.remove('mostrar'); };
     aplicarEquipe();
