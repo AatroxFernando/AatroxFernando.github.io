@@ -90,6 +90,10 @@
   }
   .btn-foto:active { background: #5a67d8; }
   .btn-foto input { position: absolute; width: 1px; height: 1px; opacity: 0; left: -9999px; }
+  .botoes-foto { display: flex; gap: 8px; }
+  .botoes-foto .btn-foto { flex: 1; padding: 13px 6px; }
+  .btn-foto.camera { background: #2e7d32; }
+  .btn-foto.camera:active { background: #1b5e20; }
 
   .resumo { background: #f8f9fa; border-radius: 10px; padding: 12px 14px; font-size: 14px; margin-bottom: 15px; }
   .resumo div { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #e3e6ea; }
@@ -282,7 +286,8 @@
       <ol>
         <li>Tire as fotos pelo <b>Timestamp Camera</b> (com o carimbo).</li>
         <li>Volte para esta tela.</li>
-        <li>Em cada item, toque em <b>🖼️ Escolher da galeria</b> e selecione a foto certa.</li>
+        <li>Em cada item, toque em <b>🖼️ Galeria</b> e selecione a foto certa.</li>
+        <li>Ou toque em <b>📷 Tirar foto</b>: o app tira a foto com data, hora e coordenadas UTM.</li>
       </ol>
     </div>
 
@@ -594,6 +599,148 @@
     }
   }
 
+  // ===================== CÂMERA DO APP (carimbo com data, hora e UTM) =====================
+  // O GPS fica ligado só enquanto a equipe está tirando fotos (desliga 5 min depois da última).
+  var gps = { ultimo: null, watch: null, timer: null, negado: false };
+  function ligarGPS() {
+    if (!navigator.geolocation) return;
+    clearTimeout(gps.timer);
+    gps.timer = setTimeout(desligarGPS, 5 * 60000);
+    if (gps.watch !== null) return;
+    try {
+      gps.watch = navigator.geolocation.watchPosition(
+        function (pos) { gps.ultimo = pos; gps.negado = false; },
+        function (e) { if (e && e.code === 1) gps.negado = true; },
+        { enableHighAccuracy: true, maximumAge: 15000, timeout: 60000 });
+    } catch (e) { gps.watch = null; }
+  }
+  function desligarGPS() {
+    if (gps.watch !== null) { try { navigator.geolocation.clearWatch(gps.watch); } catch (e) {} }
+    gps.watch = null;
+  }
+  // Posição de no máximo 2 minutos atrás; espera até 20 s por uma nova
+  function posicaoRecente() {
+    ligarGPS();
+    var fresca = function () { return gps.ultimo && Date.now() - gps.ultimo.timestamp < 120000 ? gps.ultimo : null; };
+    if (fresca() || !navigator.geolocation) return Promise.resolve(fresca());
+    return new Promise(function (res) {
+      var t0 = Date.now();
+      try {
+        navigator.geolocation.getCurrentPosition(
+          function (pos) { gps.ultimo = pos; },
+          function (e) { if (e && e.code === 1) gps.negado = true; },
+          { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 });
+      } catch (e) {}
+      (function espera() {
+        if (fresca()) return res(fresca());
+        if (gps.negado || Date.now() - t0 > 20000) return res(null);
+        setTimeout(espera, 500);
+      })();
+    });
+  }
+
+  // Latitude/longitude (WGS84) -> UTM
+  function paraUTM(lat, lon) {
+    var a = 6378137, f = 1 / 298.257223563, k0 = 0.9996;
+    var e2 = f * (2 - f), ep2 = e2 / (1 - e2);
+    var zona = Math.floor((lon + 180) / 6) + 1;
+    var lon0 = ((zona - 1) * 6 - 180 + 3) * Math.PI / 180;
+    var fi = lat * Math.PI / 180, la = lon * Math.PI / 180;
+    var sf = Math.sin(fi), cf = Math.cos(fi), tf = Math.tan(fi);
+    var N = a / Math.sqrt(1 - e2 * sf * sf), T = tf * tf, C = ep2 * cf * cf, A = cf * (la - lon0);
+    var M = a * ((1 - e2 / 4 - 3 * e2 * e2 / 64 - 5 * e2 * e2 * e2 / 256) * fi
+      - (3 * e2 / 8 + 3 * e2 * e2 / 32 + 45 * e2 * e2 * e2 / 1024) * Math.sin(2 * fi)
+      + (15 * e2 * e2 / 256 + 45 * e2 * e2 * e2 / 1024) * Math.sin(4 * fi)
+      - (35 * e2 * e2 * e2 / 3072) * Math.sin(6 * fi));
+    var E = k0 * N * (A + (1 - T + C) * Math.pow(A, 3) / 6 + (5 - 18 * T + T * T + 72 * C - 58 * ep2) * Math.pow(A, 5) / 120) + 500000;
+    var Nn = k0 * (M + N * tf * (A * A / 2 + (5 - T + 9 * C + 4 * C * C) * Math.pow(A, 4) / 24 + (61 - 58 * T + T * T + 600 * C - 330 * ep2) * Math.pow(A, 6) / 720));
+    if (lat < 0) Nn += 10000000;
+    var letra = 'CDEFGHJKLMNPQRSTUVWX'.charAt(Math.max(0, Math.min(19, Math.floor((lat + 80) / 8))));
+    return { zona: zona + letra, e: Math.round(E), n: Math.round(Nn) };
+  }
+
+  // Monta o bloco EXIF com data/hora e GPS (para o Organizador UTM e o Google Fotos lerem)
+  function exifGPS(lat, lon, data) {
+    var buf = new ArrayBuffer(212), v = new DataView(buf), u8 = new Uint8Array(buf), T = 10;
+    v.setUint16(0, 0xFFE1); v.setUint16(2, 210);
+    u8.set([0x45, 0x78, 0x69, 0x66, 0, 0], 4);
+    v.setUint16(T, 0x4949); v.setUint16(T + 2, 42, true); v.setUint32(T + 4, 8, true);
+    var ent = function (pos, tag, tipo, qtd, valor, curto) {
+      v.setUint16(T + pos, tag, true); v.setUint16(T + pos + 2, tipo, true); v.setUint32(T + pos + 4, qtd, true);
+      if (curto) v.setUint16(T + pos + 8, valor, true); else v.setUint32(T + pos + 8, valor, true);
+    };
+    v.setUint16(T + 8, 3, true);                       // IFD0
+    ent(10, 0x0112, 3, 1, 1, true);                    // orientação: normal
+    ent(22, 0x8769, 4, 1, 50);                         // -> Exif IFD
+    ent(34, 0x8825, 4, 1, 88);                         // -> GPS IFD
+    v.setUint32(T + 46, 0, true);
+    v.setUint16(T + 50, 1, true);                      // Exif IFD
+    ent(52, 0x9003, 2, 20, 68);                        // data/hora original
+    v.setUint32(T + 64, 0, true);
+    for (var i = 0; i < 19; i++) u8[T + 68 + i] = data.charCodeAt(i);
+    v.setUint16(T + 88, 5, true);                      // GPS IFD
+    ent(90, 0x0000, 1, 4, 0); u8.set([2, 3, 0, 0], T + 98);
+    ent(102, 0x0001, 2, 2, 0); u8[T + 110] = lat < 0 ? 83 : 78;
+    ent(114, 0x0002, 5, 3, 154);
+    ent(126, 0x0003, 2, 2, 0); u8[T + 134] = lon < 0 ? 87 : 69;
+    ent(138, 0x0004, 5, 3, 178);
+    v.setUint32(T + 150, 0, true);
+    var racional = function (pos, graus) {
+      graus = Math.abs(graus);
+      var d = Math.floor(graus), mf = (graus - d) * 60, m = Math.floor(mf), s = Math.round((mf - m) * 600000);
+      [[d, 1], [m, 1], [s, 10000]].forEach(function (r, k) {
+        v.setUint32(T + pos + k * 8, r[0], true); v.setUint32(T + pos + k * 8 + 4, r[1], true);
+      });
+    };
+    racional(154, lat); racional(178, lon);
+    return u8;
+  }
+
+  // Foto tirada pela câmera do app: reduz, escreve o carimbo e grava o GPS no arquivo
+  var ultimoSemGPS = false;
+  async function carimbar(file) {
+    var pos = await posicaoRecente();
+    var agora = new Date();
+    var img;
+    try { img = await carregarImagem(file); } catch (e) { return file; }
+    var w = img.naturalWidth, h = img.naturalHeight, fator = Math.min(1, MAX_LADO / Math.max(w, h));
+    var cw = Math.round(w * fator), ch = Math.round(h * fator);
+    var cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
+    var g = cv.getContext('2d');
+    g.drawImage(img, 0, 0, cw, ch);
+    var z = function (x) { return String(x).padStart(2, '0'); };
+    var linhas = [z(agora.getDate()) + '/' + z(agora.getMonth() + 1) + '/' + agora.getFullYear() + ' ' +
+      z(agora.getHours()) + ':' + z(agora.getMinutes()) + ':' + z(agora.getSeconds())];
+    if (pos) {
+      var u = paraUTM(pos.coords.latitude, pos.coords.longitude);
+      linhas.push('UTM ' + u.zona + '  ' + u.e + ' E  ' + u.n + ' N');
+    } else {
+      linhas.push('UTM: sem sinal de GPS');
+    }
+    ultimoSemGPS = !pos;
+    var fs = Math.max(16, Math.round(Math.min(cw, ch) * 0.04));
+    g.font = 'bold ' + fs + 'px Arial, Helvetica, sans-serif';
+    g.textAlign = 'right'; g.textBaseline = 'bottom'; g.lineJoin = 'round';
+    g.lineWidth = Math.max(3, fs * 0.2); g.strokeStyle = 'rgba(0,0,0,.85)'; g.fillStyle = '#ffffff';
+    var x = cw - fs * 0.6, y = ch - fs * 0.6;
+    for (var i = linhas.length - 1; i >= 0; i--) { g.strokeText(linhas[i], x, y); g.fillText(linhas[i], x, y); y -= fs * 1.25; }
+    var jpeg = await new Promise(function (r) { cv.toBlob(r, 'image/jpeg', QUALIDADE); });
+    if (!jpeg) return file;
+    if (!pos) return jpeg;
+    var dataExif = agora.getFullYear() + ':' + z(agora.getMonth() + 1) + ':' + z(agora.getDate()) + ' ' +
+      z(agora.getHours()) + ':' + z(agora.getMinutes()) + ':' + z(agora.getSeconds());
+    return new Blob([jpeg.slice(0, 2), exifGPS(pos.coords.latitude, pos.coords.longitude, dataExif), jpeg.slice(2)], { type: 'image/jpeg' });
+  }
+
+  // Dois botões por item: câmera do app (com carimbo) e galeria
+  function botoesFoto(at, tem, multiplo) {
+    return '<div class="botoes-foto">' +
+      '<label class="btn-foto camera">📷 ' + (tem ? 'Tirar de novo' : 'Tirar foto') +
+      '<input type="file" accept="image/*" capture="environment" data-camera="1"' + at + '></label>' +
+      '<label class="btn-foto">🖼️ Galeria' +
+      '<input type="file" accept="image/*"' + (multiplo ? ' multiple' : '') + at + '></label></div>';
+  }
+
   // ===================== RASCUNHO NO APARELHO (IndexedDB) =====================
   var db = null;
   function abrirBanco() {
@@ -731,8 +878,7 @@
         '<b>' + (i + 1) + '. ' + s.nome + '</b><span class="badge opc">Opcional</span></div>' +
         (b ? '<div class="preview"><img src="' + urlDe(b) + '" alt="' + s.nome + '">' +
              '<button class="remover" data-acao="remover"' + at + ' aria-label="Remover">×</button></div>' : '') +
-        '<label class="btn-foto">' + (b ? '🔄 Trocar foto' : '🖼️ Escolher da galeria') +
-        '<input type="file" accept="image/*"' + at + '></label></div>';
+        botoesFoto(at, b, false) + '</div>';
     });
     $('slots').innerHTML = h;
   }
@@ -772,8 +918,7 @@
         '<b>' + (i + 1) + '. ' + s.nome + '</b><span class="badge opc">Opcional</span></div>' +
         (b ? '<div class="preview"><img src="' + urlDe(b) + '" alt="' + s.nome + '">' +
              '<button class="remover" data-acao="remover"' + at + ' aria-label="Remover">×</button></div>' : '') +
-        '<label class="btn-foto">' + (b ? '🔄 Trocar foto' : '🖼️ Escolher da galeria') +
-        '<input type="file" accept="image/*"' + at + '></label></div>';
+        botoesFoto(at, b, false) + '</div>';
     });
     $('slots').innerHTML = h;
   }
@@ -798,8 +943,7 @@
         '<span class="badge ' + (obrig ? 'obr">Obrigatório' : 'opc">Opcional') + '</span></div>' +
         (b ? '<div class="preview"><img src="' + urlDe(b) + '" alt="' + s.nome + '">' +
              '<button class="remover" data-acao="remover"' + attrs(s.id) + ' aria-label="Remover">×</button></div>' : '') +
-        '<label class="btn-foto">' + (b ? '🔄 Trocar foto' : '🖼️ Escolher da galeria') +
-        '<input type="file" accept="image/*"' + attrs(s.id) + '></label></div>';
+        botoesFoto(attrs(s.id), b, false) + '</div>';
     });
     if (p !== 'depois') { $('slots').innerHTML = h; return; } // hastes só no DEPOIS
     var hs = f.hastes;
@@ -810,7 +954,7 @@
         return '<div class="preview"><img src="' + urlDe(b) + '" alt="Haste ' + (i + 1) + '">' +
           '<button class="remover" data-acao="remover-haste"' + attrs('hastes') + ' data-indice="' + i + '" aria-label="Remover">×</button></div>';
       }).join('') + '</div>' : '') +
-      '<label class="btn-foto">🖼️ Escolher hastes da galeria<input type="file" accept="image/*" multiple' + attrs('hastes') + '></label></div>';
+      botoesFoto(attrs('hastes'), false, true) + '</div>';
     $('slots').innerHTML = h;
   }
 
@@ -924,7 +1068,13 @@
     if (!arquivos.length) { mensagem('Selecione uma imagem.', 'erro'); return; }
     mensagem('⏳ Preparando ' + arquivos.length + ' foto(s)...', 'info', true);
     var prontas = [];
-    for (var f of arquivos) prontas.push(await comprimir(f));
+    var semGPS = false;
+    if (input.dataset.camera) {
+      mensagem('📍 Obtendo localização e carimbando a foto...', 'info', true);
+      for (var fc of arquivos) { prontas.push(await carimbar(fc)); semGPS = semGPS || ultimoSemGPS; }
+    } else {
+      for (var f of arquivos) prontas.push(await comprimir(f));
+    }
     if (slot === 'hastes') {
       Array.prototype.push.apply(poste(n)[p].hastes, prontas);
       mensagem('+' + prontas.length + ' haste(s) no P' + n, 'sucesso');
@@ -932,6 +1082,7 @@
       alvo(n, p)[slot] = prontas[0];
       $('mensagem').className = 'mensagem';
     }
+    if (semGPS) mensagem('⚠️ Foto carimbada sem coordenadas: GPS sem sinal ou sem permissão de localização.', 'erro');
     if (eNaTela(n, p)) renderSlots();
     if (p === 'equip') renderEquips();
     houveMudanca();
@@ -988,6 +1139,7 @@
     });
 
     document.addEventListener('click', function (e) {
+      if (e.target.closest('.btn-foto.camera')) ligarGPS(); // já vai buscando o GPS enquanto a câmera abre
       var bf = e.target.closest('[data-acao="remover-fila"]');
       if (bf) { removerDaFila(bf.dataset.id); return; }
       if (estado.enviando) return;
