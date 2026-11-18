@@ -309,22 +309,13 @@
         <div class="campo">
           <label>✅ Status</label>
           <label class="check"><input type="checkbox" id="obraConcluida"> Obra concluída</label>
+          <label class="check"><input type="checkbox" id="obraParcial"> Obra parcial</label>
         </div>
         <div class="campo largo">
-          <label for="observacoes">📝 Observações</label>
+          <label for="observacoes" id="rotuloObs">📝 Observações</label>
           <textarea id="observacoes" placeholder="Pendências, materiais, algo que o fechamento precisa saber..."></textarea>
         </div>
       </div>
-    </div>
-
-    <div class="camera" id="caixaCamera">
-      <a class="btn-camera" id="btnCamera" href="#">📸 Abrir Timestamp Camera</a>
-      <ol>
-        <li>Tire as fotos pelo <b>Timestamp Camera</b> (com o carimbo).</li>
-        <li>Volte para esta tela.</li>
-        <li>Em cada item, toque em <b>🖼️ Galeria</b> e selecione a foto certa.</li>
-        <li>Ou toque em <b>📷 Tirar foto</b>: o app tira a foto com data, hora e coordenadas UTM.</li>
-      </ol>
     </div>
 
     <div class="alternar">
@@ -517,6 +508,7 @@
       dataObra: $('dataObra').value,
       qtdPostes: qtdPostes(),
       obraConcluida: $('obraConcluida').checked,
+      obraParcial: $('obraParcial').checked,
       observacoes: $('observacoes').value.trim()
     };
   }
@@ -1105,7 +1097,11 @@
     var faltaDados = !d.equipe || !d.numeroObra || !d.dataObra;
     var comFotos = postesComFotos();
     var incompletos = postesIncompletos();
-    var pronto = !faltaDados && comFotos.length > 0 && incompletos.length === 0;
+    var faltaObs = d.obraParcial && !d.observacoes; // obra parcial: obrigatório dizer o que falta
+    var pronto = !faltaDados && !faltaObs && comFotos.length > 0 && incompletos.length === 0;
+    $('observacoes').classList.toggle('erro', estado.tentouEnviar && faltaObs);
+    $('rotuloObs').textContent = d.obraParcial ? '📝 O que falta fazer? * (obra parcial)' : '📝 Observações';
+    $('observacoes').placeholder = d.obraParcial ? 'Obrigatório: descreva o que falta fazer na obra...' : 'Pendências, materiais, algo que o fechamento precisa saber...';
 
     ['equipe', 'numeroObra', 'dataObra'].forEach(function (id) {
       $(id).classList.toggle('erro', estado.tentouEnviar && !$(id).value.trim());
@@ -1129,6 +1125,7 @@
       if (!comFotos.length) falta.push('fotos de pelo menos 1 poste');
       else if (incompletos.length) falta.push('fotos de ' + incompletos.map(function (n) { return 'P' + n; }).join(', '));
       if (faltaDados) falta.push('dados da obra');
+      if (faltaObs) falta.push('o que falta fazer');
       btn.disabled = false; // clicável para mostrar o que falta
       btn.textContent = '📧 Falta: ' + falta.join(' + ');
     }
@@ -1144,7 +1141,7 @@
       '<div><span>Obra</span><span>' + esc(d.numeroObra || '-') + '</span></div>' +
       '<div><span>Equipe</span><span>' + esc(d.equipe || '-') + '</span></div>' +
       '<div><span>Data</span><span>' + dataBR(d.dataObra) + '</span></div>' +
-      '<div><span>Status</span><span>' + (d.obraConcluida ? '✅ Concluída' : '🔄 Em andamento') + '</span></div>' +
+      '<div><span>Status</span><span>' + (d.obraConcluida ? '✅ Concluída' : d.obraParcial ? '🟠 Parcial' : '🔄 Em andamento') + '</span></div>' +
       '<div><span>Postes trabalhados</span><span>' + comFotos.length + ' de ' + d.qtdPostes + '</span></div>' +
       '<div><span>⚡ DITAIS</span><span>' + (totalDitais() ? totalDitais() + '/5 (' + DITAIS.filter(function (s) { return estado.ditais[s.id]; }).map(function (s) { return s.nome; }).join(', ') + ')' : 'Nenhuma') + '</span></div>' +
       '<div><span>🔧 Equipamentos</span><span>' + (equipsComFotos().length ? equipsComFotos().map(function (n) { return 'E' + n + ' ' + totalEquipItem(n) + '/3'; }).join(' · ') : 'Nenhum') + '</span></div>' +
@@ -1309,7 +1306,14 @@
       houveMudanca();
     });
 
-    ['equipe', 'numeroObra', 'dataObra', 'obraConcluida', 'observacoes'].forEach(function (id) {
+    // Concluída e Parcial: marcar uma desmarca a outra
+    $('obraConcluida').addEventListener('change', function () { if ($('obraConcluida').checked) $('obraParcial').checked = false; });
+    $('obraParcial').addEventListener('change', function () {
+      if (!$('obraParcial').checked) return;
+      $('obraConcluida').checked = false;
+      if (!$('observacoes').value.trim()) setTimeout(function () { $('observacoes').focus(); }, 50);
+    });
+    ['equipe', 'numeroObra', 'dataObra', 'obraConcluida', 'obraParcial', 'observacoes'].forEach(function (id) {
       $(id).addEventListener('input', houveMudanca);
       $(id).addEventListener('change', houveMudanca);
     });
@@ -1353,6 +1357,7 @@
     $('dataObra').value = hojeLocal();
     $('qtdPostes').value = 1;
     $('obraConcluida').checked = false;
+    $('obraParcial').checked = false;
     estado.fotos = {};
     estado.ditais = novoDitais();
     estado.equip = novoEquip();
@@ -1684,6 +1689,11 @@
       $(!d.equipe ? 'equipe' : !d.numeroObra ? 'numeroObra' : 'dataObra').focus();
       return;
     }
+    if (d.obraParcial && !d.observacoes) {
+      mensagem('Obra parcial: escreva em Observações o que falta fazer.', 'erro', true);
+      $('observacoes').focus();
+      return;
+    }
     if (!postesComFotos().length) {
       mensagem('Tire as fotos de pelo menos um poste.', 'erro');
       return;
@@ -1894,7 +1904,6 @@
   // ===================== INÍCIO =====================
   async function iniciar() {
     if (MODO_TESTE) $('avisoTeste').style.display = '';
-    configurarCamera();
     configurarPWA();
     conexao();
     $('dataObra').value = hojeLocal();
@@ -1909,6 +1918,7 @@
       $('dataObra').value = d.dataObra || hojeLocal();
       $('qtdPostes').value = d.qtdPostes || 1;
       $('obraConcluida').checked = !!d.obraConcluida;
+      $('obraParcial').checked = !!d.obraParcial;
       $('observacoes').value = d.observacoes || '';
       var restaurar = function (g, comHastes) {
         var per = novoPeriodo();
