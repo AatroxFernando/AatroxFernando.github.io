@@ -129,6 +129,21 @@
     font-size: 16px; font-weight: 700; text-align: center; text-decoration: none; cursor: pointer;
   }
   .btn-camera:active { transform: scale(.98); }
+  /* ----- Código da equipe ----- */
+  .login { position: fixed; inset: 0; z-index: 50; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: none; align-items: center; justify-content: center; padding: 20px; }
+  .login.mostrar { display: flex; }
+  .login .caixa { background: #fff; border-radius: 16px; padding: 24px 20px; width: 100%; max-width: 380px; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,.25); }
+  .login h2 { font-size: 20px; margin-bottom: 6px; }
+  .login p { font-size: 14px; color: #555; margin-bottom: 14px; }
+  .login input { width: 100%; padding: 14px; font-size: 22px; letter-spacing: 3px; text-align: center; text-transform: uppercase; border: 2px solid #dee2e6; border-radius: 10px; margin-bottom: 12px; font-family: monospace; }
+  .login input:focus { outline: none; border-color: #667eea; }
+  .login button { width: 100%; padding: 14px; border: 0; border-radius: 10px; background: #5a4fcf; color: #fff; font-size: 16px; font-weight: 700; cursor: pointer; }
+  .login button:disabled { background: #aaa; }
+  .login .voltar { background: #9e9e9e; margin-top: 8px; display: none; }
+  .login .erro-login { color: #c62828; font-size: 14px; min-height: 18px; margin-top: 10px; }
+  .equipe-atual { text-align: center; font-size: 13px; color: #4527a0; margin-bottom: 10px; }
+  .equipe-atual button { border: 0; background: none; color: #5a4fcf; text-decoration: underline; font-size: 13px; cursor: pointer; }
+  .campo input[readonly] { background: #f1f0fb; color: #4527a0; font-weight: 700; }
   .camera ol { margin: 10px 0 0 20px; font-size: 13px; color: #5d4037; line-height: 1.5; }
   .barra-postes { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 12px; padding: 12px; margin-bottom: 15px; }
   .barra-postes h4 { font-size: 14px; color: #495057; margin-bottom: 8px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px; }
@@ -218,6 +233,18 @@
     <h4><span>📤 Fila de envio</span><button id="btnTentarFila">Enviar agora</button></h4>
     <div id="listaFila"></div>
   </div>
+
+  <div class="login" id="telaLogin">
+    <div class="caixa">
+      <h2>🔐 Código da equipe</h2>
+      <p>Digite o código que o setor de obras passou para a sua equipe. Só precisa fazer isso uma vez neste celular (com internet).</p>
+      <input type="text" id="codigoEquipe" placeholder="XXXX-XXXX" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="12">
+      <button id="btnEntrar">Entrar</button>
+      <button class="voltar" id="btnCancelarLogin">Voltar</button>
+      <div class="erro-login" id="erroLogin"></div>
+    </div>
+  </div>
+  <div class="equipe-atual" id="equipeAtual" style="display:none"></div>
 
   <div id="formulario">
     <div class="secao">
@@ -1033,6 +1060,7 @@
     var equipe = $('equipe').value;
     ['equipe', 'numeroObra', 'observacoes'].forEach(function (id) { $(id).value = ''; });
     if (manterEquipe) $('equipe').value = equipe;
+    aplicarEquipe();
     $('dataObra').value = hojeLocal();
     $('qtdPostes').value = 1;
     $('obraConcluida').checked = false;
@@ -1066,7 +1094,11 @@
   // continuando de onde parou se o sinal cair no meio.
 
   function chamar(acao) {
-    var args = Array.prototype.slice.call(arguments, 1);
+    return chamarCom.apply(null, [null].concat(Array.prototype.slice.call(arguments)));
+  }
+  // codigo: código da equipe a usar (null = o código salvo neste celular)
+  function chamarCom(codigo, acao) {
+    var args = Array.prototype.slice.call(arguments, 2);
     if (MODO_TESTE) return simulado[acao].apply(null, args);
     if (NO_APPS_SCRIPT) {
       return new Promise(function (res, rej) {
@@ -1082,7 +1114,7 @@
       method: 'POST',
       // text/plain evita a "pré-checagem" (CORS) que o Apps Script não responde
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ acao: acao, chave: CHAVE, args: args }),
+      body: JSON.stringify({ acao: acao, chave: CHAVE, codigo: codigo || codigoSalvo(), args: args }),
       redirect: 'follow',
       signal: ctrl ? ctrl.signal : undefined
     }).then(function (resp) {
@@ -1214,6 +1246,7 @@
       id: id, criadoEm: Date.now(), dados: d,
       nomes: lista.map(function (x) { return x.nome; }),
       postes: postesComFotos(),
+      codigo: codigoSalvo(),
       enviadas: [], pastaId: null, status: 'pendente', erro: null, tentativas: 0
     };
     await new Promise(function (res, rej) {
@@ -1263,7 +1296,7 @@
     await gravarItem(item); renderFila();
     try {
       if (!item.pastaId) {
-        item.pastaId = await comRetentativa(function () { return chamar('iniciarRegistro', item.dados, item.id); });
+        item.pastaId = await comRetentativa(function () { return chamarCom(item.codigo, 'iniciarRegistro', item.dados, item.id); });
         await gravarItem(item);
       }
       for (let nome of item.nomes) {
@@ -1271,12 +1304,12 @@
         var g = await lerFotoFila(item.id + '|' + nome);
         if (!g) throw new Error('foto não encontrada no aparelho: ' + nome);
         let b64 = await blobBase64(new Blob([g.dados], { type: g.tipo || 'image/jpeg' }));
-        await comRetentativa(function () { return chamar('salvarFoto', item.pastaId, nome, b64); });
+        await comRetentativa(function () { return chamarCom(item.codigo, 'salvarFoto', item.pastaId, nome, b64); });
         item.enviadas.push(nome);
         await gravarItem(item); renderFila();
       }
       var r = await comRetentativa(function () {
-        return chamar('finalizarRegistro', item.pastaId, item.dados, item.nomes, item.id);
+        return chamarCom(item.codigo, 'finalizarRegistro', item.pastaId, item.dados, item.nomes, item.id);
       });
       item.status = 'enviado';
       item.enviadoEm = Date.now();
@@ -1353,6 +1386,7 @@
 
   async function enviar() {
     if (estado.enviando) return;
+    if (precisaCodigo() && !codigoSalvo()) { mostrarLogin(); return; }
     estado.tentouEnviar = true;
     atualizarTela();
     var d = dados();
@@ -1407,6 +1441,7 @@
 
   // Simulação usada só quando API_URL não foi configurada (para testar a tela).
   var simulado = {
+    entrar: function () { return new Promise(function (r) { setTimeout(function () { r({ equipe: 'EQUIPE TESTE' }); }, 300); }); },
     iniciarRegistro: function () { return new Promise(function (r) { setTimeout(function () { r('PASTA-TESTE'); }, 300); }); },
     salvarFoto: function (id, nome) { console.log('[teste] foto', nome); return new Promise(function (r) { setTimeout(function () { r('ok'); }, 150); }); },
     finalizarRegistro: function (id, d, nomes) {
@@ -1414,6 +1449,76 @@
       return new Promise(function (r) { setTimeout(function () { r({ anexadas: true, total: nomes.length }); }, 300); });
     }
   };
+
+  // ===================== CÓDIGO DA EQUIPE =====================
+  // O servidor só aceita envios com o código de uma equipe cadastrada no Apps Script.
+  function lerLS(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
+  function gravarLS(k, v) { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (e) {} }
+  function codigoSalvo() { return lerLS('registroCodigo'); }
+  function nomeEquipeSalvo() { return lerLS('registroEquipeNome'); }
+  function precisaCodigo() { return !NO_APPS_SCRIPT; } // link antigo do Apps Script não usa código
+
+  function aplicarEquipe() {
+    var nome = nomeEquipeSalvo(), box = $('equipeAtual');
+    if (precisaCodigo() && nome) {
+      $('equipe').value = nome;
+      $('equipe').readOnly = true;
+      box.innerHTML = '👷 Equipe <b>' + esc(nome) + '</b> · <button type="button" id="btnTrocarEquipe">trocar código</button>';
+      box.style.display = '';
+      $('btnTrocarEquipe').onclick = trocarEquipe;
+    } else {
+      $('equipe').readOnly = false;
+      box.style.display = 'none';
+    }
+  }
+
+  var confirmarTroca = false, timerTroca = null;
+  function trocarEquipe() {
+    if (!confirmarTroca) {
+      confirmarTroca = true;
+      $('btnTrocarEquipe').textContent = 'toque de novo para trocar';
+      timerTroca = setTimeout(function () { confirmarTroca = false; aplicarEquipe(); }, 4000);
+      return;
+    }
+    clearTimeout(timerTroca);
+    confirmarTroca = false;
+    mostrarLogin();
+  }
+
+  function mostrarLogin() {
+    $('telaLogin').classList.add('mostrar');
+    $('erroLogin').textContent = '';
+    $('codigoEquipe').value = '';
+    $('btnCancelarLogin').style.display = nomeEquipeSalvo() ? 'block' : 'none';
+    setTimeout(function () { $('codigoEquipe').focus(); }, 100);
+  }
+
+  async function entrar() {
+    var cod = $('codigoEquipe').value.trim().toUpperCase();
+    if (!cod) { $('erroLogin').textContent = 'Digite o código.'; return; }
+    if (!navigator.onLine && !MODO_TESTE) { $('erroLogin').textContent = 'Sem internet. Para entrar a primeira vez precisa de sinal.'; return; }
+    $('btnEntrar').disabled = true;
+    $('btnEntrar').textContent = 'Conferindo...';
+    $('erroLogin').textContent = '';
+    try {
+      var r = await chamarCom(cod, 'entrar');
+      gravarLS('registroCodigo', cod);
+      gravarLS('registroEquipeNome', r.equipe);
+      $('telaLogin').classList.remove('mostrar');
+      aplicarEquipe();
+      houveMudanca();
+      mensagem('✅ Equipe ' + r.equipe + ' conectada.', 'sucesso');
+      processarFila();
+    } catch (e) {
+      var msg = (e && e.message) || String(e);
+      $('erroLogin').textContent = /código da equipe inválido/.test(msg)
+        ? 'Código não reconhecido. Confira com o setor de obras.'
+        : 'Não foi possível conferir (' + msg + ').';
+    } finally {
+      $('btnEntrar').disabled = false;
+      $('btnEntrar').textContent = 'Entrar';
+    }
+  }
 
   // ===================== PWA (instalar / atualizar / offline) =====================
   var eventoInstalar = null, querAtualizar = false;
@@ -1544,6 +1649,13 @@
 
     ligarEventos();
     renderTudo();
+
+    // Código da equipe: pede uma vez por celular
+    $('btnEntrar').onclick = entrar;
+    $('codigoEquipe').addEventListener('keydown', function (e) { if (e.key === 'Enter') entrar(); });
+    $('btnCancelarLogin').onclick = function () { $('telaLogin').classList.remove('mostrar'); };
+    aplicarEquipe();
+    if (precisaCodigo() && !codigoSalvo()) mostrarLogin();
 
     // Fila de envio: carrega o que ficou guardado e tenta enviar
     filaCache = await lerFila();
