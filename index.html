@@ -1,0 +1,1565 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Registro Fotográfico - Compel</title>
+<!-- PWA: ícone, nome e tela cheia -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#5a4fcf">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Registro Obras">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh; padding: 10px; color: #333;
+  }
+  .container {
+    background: #fff; border-radius: 16px; padding: 20px; max-width: 900px;
+    margin: 0 auto; box-shadow: 0 10px 40px rgba(0,0,0,.2);
+  }
+  h1 { text-align: center; font-size: clamp(20px, 4vw, 28px); }
+  .subtitulo { text-align: center; color: #666; font-size: 14px; margin: 4px 0 14px; }
+  .aviso { padding: 9px 12px; border-radius: 8px; font-size: 13px; text-align: center; margin-bottom: 10px; }
+  .aviso.online { background: #d4edda; color: #155724; }
+  .aviso.offline { background: #fff3cd; color: #856404; }
+  .aviso.teste { background: #fde2e2; color: #8a1c1c; }
+  .rascunho { text-align: center; font-size: 12px; color: #888; margin-bottom: 12px; min-height: 15px; }
+
+  .secao { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 12px; padding: 15px; margin-bottom: 18px; }
+  .secao h3 { font-size: 16px; color: #495057; margin-bottom: 12px; }
+  .grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+  .campo { display: flex; flex-direction: column; }
+  .campo label { font-weight: 600; font-size: 14px; color: #495057; margin-bottom: 4px; }
+  .campo input[type=text], .campo input[type=date], .campo textarea {
+    padding: 10px; border: 2px solid #dee2e6; border-radius: 8px; font-size: 16px; font-family: inherit; background: #fff;
+  }
+  .campo textarea { resize: vertical; min-height: 60px; }
+  .campo input:focus, .campo textarea:focus { outline: none; border-color: #667eea; }
+  .campo .erro { border-color: #ff4444 !important; background: #fff5f5 !important; }
+  .campo.largo { grid-column: 1 / -1; }
+  .check { display: flex; align-items: center; gap: 8px; padding: 10px 0; font-size: 15px; }
+  .check input { width: 22px; height: 22px; }
+
+  .alternar { display: flex; background: #e9ecef; border-radius: 10px; overflow: hidden; margin-bottom: 15px; }
+  .alternar button {
+    flex: 1; padding: 11px 8px; border: 0; background: transparent; color: #6c757d;
+    font-weight: 600; font-size: 15px; cursor: pointer; line-height: 1.25;
+  }
+  .alternar button small { display: block; font-size: 11px; font-weight: 500; }
+  .alternar button.ativo.antes { background: #2196F3; color: #fff; }
+  .alternar button.ativo.depois { background: #4CAF50; color: #fff; }
+  .alternar button.ativo.ditais { background: #e65100; color: #fff; }
+  .alternar button.ativo.equip { background: #455a64; color: #fff; }
+  .contador { display: inline-block; background: rgba(0,0,0,.12); padding: 1px 7px; border-radius: 10px; font-size: 12px; margin-left: 3px; }
+
+  .vista { display: none; }
+  .vista.ativa { display: block; }
+  .slots { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 18px; }
+  .slot { border: 2px dashed #ddd; border-radius: 12px; padding: 13px; background: #f9f9f9; }
+  .slot.opcional { border-color: #ffb547; background: #fff8f0; }
+  .slot.cheio { border-style: solid; border-color: #4CAF50; background: #f0f9f0; }
+  .slot-topo { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+  .slot-topo b { font-size: 15px; }
+  .slot-topo .qtd { margin-left: auto; font-size: 13px; color: #666; }
+  .ponto { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .ponto.ok { background: #4CAF50; } .ponto.falta { background: #ff4444; } .ponto.opc { background: #ffa500; }
+  .badge { font-size: 11px; padding: 2px 7px; border-radius: 10px; color: #fff; }
+  .badge.obr { background: #ff4444; } .badge.opc { background: #ffa500; }
+
+  .preview { position: relative; margin-bottom: 10px; }
+  .preview img { width: 100%; height: 130px; object-fit: cover; border-radius: 8px; border: 1px solid #ddd; display: block; }
+  .remover {
+    position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; border-radius: 50%;
+    border: 0; background: #ff4444; color: #fff; font-size: 18px; cursor: pointer; line-height: 30px;
+  }
+  .galeria { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 8px; margin-bottom: 10px; }
+  .galeria .preview { margin: 0; }
+  .galeria img { height: 72px; }
+  .galeria .remover { width: 24px; height: 24px; font-size: 14px; line-height: 24px; top: 3px; right: 3px; }
+
+  .btn-foto {
+    display: block; position: relative; overflow: hidden; padding: 13px; background: #667eea; color: #fff;
+    text-align: center; border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer; user-select: none;
+  }
+  .btn-foto:active { background: #5a67d8; }
+  .btn-foto input { position: absolute; width: 1px; height: 1px; opacity: 0; left: -9999px; }
+
+  .resumo { background: #f8f9fa; border-radius: 10px; padding: 12px 14px; font-size: 14px; margin-bottom: 15px; }
+  .resumo div { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #e3e6ea; }
+  .resumo div:last-child { border: 0; }
+  .resumo span:first-child { font-weight: 600; color: #495057; }
+  .resumo span:last-child { color: #555; text-align: right; }
+
+  .acoes { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn { flex: 1; min-width: 130px; padding: 15px; border: 0; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; color: #fff; }
+  .btn:active { transform: scale(.98); }
+  .btn.enviar { background: #4CAF50; flex: 2; }
+  .btn.enviar:disabled { background: #bbb; cursor: not-allowed; }
+  .btn.enviar.incompleto { background: #9e9e9e; }
+  .btn.limpar { background: #ff9800; }
+  .btn.limpar.confirmar { background: #e53935; }
+
+  .progresso { display: none; margin-top: 15px; }
+  .progresso.mostrar { display: block; }
+  .barra { height: 12px; background: #e9ecef; border-radius: 6px; overflow: hidden; }
+  .barra div { height: 100%; width: 0; background: #4CAF50; transition: width .3s; }
+  .progresso p { text-align: center; font-size: 14px; margin-top: 6px; color: #555; }
+
+  .mensagem { display: none; margin-top: 15px; padding: 12px; border-radius: 8px; font-size: 14px; text-align: center; }
+  .mensagem.sucesso { display: block; background: #d4edda; color: #155724; }
+  .mensagem.erro { display: block; background: #f8d7da; color: #721c24; }
+  .mensagem.info { display: block; background: #e3f2fd; color: #0d47a1; }
+
+  .concluido { display: none; text-align: center; padding: 25px 10px; }
+  .concluido.mostrar { display: block; }
+  .concluido .icone { font-size: 56px; }
+  .concluido h2 { margin: 8px 0; color: #2e7d32; }
+  .concluido p { color: #555; margin-bottom: 18px; font-size: 15px; }
+
+  .camera { background: #fff8e1; border: 1px solid #ffe082; border-radius: 12px; padding: 12px; margin-bottom: 15px; }
+  .btn-camera {
+    display: block; width: 100%; padding: 14px; border: 0; border-radius: 10px; background: #263238; color: #fff;
+    font-size: 16px; font-weight: 700; text-align: center; text-decoration: none; cursor: pointer;
+  }
+  .btn-camera:active { transform: scale(.98); }
+  .camera ol { margin: 10px 0 0 20px; font-size: 13px; color: #5d4037; line-height: 1.5; }
+  .barra-postes { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 12px; padding: 12px; margin-bottom: 15px; }
+  .barra-postes h4 { font-size: 14px; color: #495057; margin-bottom: 8px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px; }
+  .barra-postes h4 small { font-weight: 400; color: #777; }
+  .postes { display: flex; flex-wrap: wrap; gap: 8px; }
+  .poste {
+    min-width: 54px; padding: 9px 6px; border-radius: 10px; border: 2px solid #ccc; background: #fff;
+    font-weight: 700; font-size: 15px; cursor: pointer; color: #555; line-height: 1.1;
+  }
+  .poste small { display: block; font-size: 10px; font-weight: 500; margin-top: 2px; }
+  .poste.parcial { border-color: #ffa500; background: #fff4e0; color: #8a5a00; }
+  .poste.completo { border-color: #4CAF50; background: #e8f5e9; color: #2e7d32; }
+  .poste.selecionado { outline: 3px solid #667eea; outline-offset: 1px; }
+  .poste.mais { border-style: dashed; color: #667eea; border-color: #667eea; }
+  .poste.menos { border-style: dashed; color: #e53935; border-color: #e57373; }
+  .poste.menos.confirmar { background: #e53935; color: #fff; border-style: solid; min-width: 110px; }
+  .legenda { font-size: 11px; color: #777; margin-top: 8px; }
+  .titulo-poste { text-align: center; font-weight: 700; padding: 9px; border-radius: 8px; margin-bottom: 12px; font-size: 16px; }
+  .titulo-poste.antes { background: #e3f2fd; color: #1565C0; }
+  .titulo-poste.depois { background: #e8f5e9; color: #2e7d32; }
+  .titulo-poste.ditais { background: #fff3e0; color: #e65100; }
+  .titulo-poste.equip { background: #eceff1; color: #37474f; }
+  .campo input[type=number] { padding: 10px; border: 2px solid #dee2e6; border-radius: 8px; font-size: 16px; background: #fff; }
+
+  /* ----- PWA: tela cheia no iPhone (área do relógio/entalhe) ----- */
+  body { padding-top: max(10px, env(safe-area-inset-top)); padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+
+  /* ----- Faixas de instalar / atualizar ----- */
+  .faixa { display: none; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; margin-bottom: 10px; font-size: 14px; }
+  .faixa.mostrar { display: flex; }
+  .faixa span { flex: 1; }
+  .faixa button { border: 0; border-radius: 8px; padding: 9px 12px; font-weight: 700; font-size: 14px; cursor: pointer; }
+  .faixa.instalar { background: #ede7f6; color: #4527a0; }
+  .faixa.instalar button { background: #5a4fcf; color: #fff; }
+  .faixa.atualizar { background: #e3f2fd; color: #0d47a1; }
+  .faixa.atualizar button { background: #1565c0; color: #fff; }
+  .faixa .fechar { background: transparent !important; color: inherit !important; padding: 4px 6px; font-size: 18px; }
+
+  /* ----- Fila de envio ----- */
+  .fila { background: #f3f0ff; border: 1px solid #d1c4e9; border-radius: 12px; padding: 12px; margin-bottom: 15px; display: none; }
+  .fila.mostrar { display: block; }
+  .fila h4 { font-size: 15px; color: #4527a0; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .fila h4 button { border: 0; background: #5a4fcf; color: #fff; border-radius: 8px; padding: 7px 10px; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .item-fila { background: #fff; border-radius: 8px; padding: 9px 10px; margin-top: 6px; font-size: 13px; border-left: 4px solid #9e9e9e; }
+  .item-fila.pendente { border-left-color: #ffa000; }
+  .item-fila.enviando { border-left-color: #1e88e5; }
+  .item-fila.erro { border-left-color: #e53935; }
+  .item-fila.enviado { border-left-color: #43a047; opacity: .8; }
+  .item-fila .linha1 { display: flex; justify-content: space-between; gap: 8px; font-weight: 700; }
+  .item-fila .linha2 { color: #666; margin-top: 3px; }
+  .item-fila .mini { height: 5px; background: #e9ecef; border-radius: 3px; overflow: hidden; margin-top: 6px; }
+  .item-fila .mini div { height: 100%; background: #1e88e5; }
+  .item-fila button { margin-top: 6px; border: 1px solid #e57373; background: #fff; color: #c62828; border-radius: 6px; padding: 5px 8px; font-size: 12px; cursor: pointer; }
+  .item-fila button.confirmar { background: #e53935; color: #fff; }
+
+  @media (max-width: 600px) {
+    .alternar { display: grid; grid-template-columns: 1fr 1fr; }
+    .alternar button { font-size: 14px; }
+    body { padding: 5px; }
+    .container { padding: 13px; border-radius: 12px; }
+    .slots, .grade { grid-template-columns: 1fr; }
+    .acoes { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🏗️ Registro Fotográfico</h1>
+  <p class="subtitulo">Setor de Obras - Compel Vilhena</p>
+
+  <div class="aviso teste" id="avisoTeste" style="display:none">
+    ⚠️ Modo de teste: nada é enviado. Cole o link do App da Web em API_URL (no index.html) para enviar de verdade.
+  </div>
+  <div class="faixa atualizar" id="faixaAtualizar">
+    <span>🔄 Nova versão do app disponível.</span>
+    <button id="btnAtualizar">Atualizar</button>
+  </div>
+  <div class="faixa instalar" id="faixaInstalar">
+    <span id="textoInstalar">📲 Instale o app na tela inicial para usar sem internet.</span>
+    <button id="btnInstalar">Instalar</button>
+    <button class="fechar" id="btnFecharInstalar" aria-label="Fechar">×</button>
+  </div>
+  <div class="aviso" id="avisoConexao">🌐 Verificando conexão...</div>
+  <div class="rascunho" id="infoRascunho"></div>
+
+  <div class="fila" id="fila">
+    <h4><span>📤 Fila de envio</span><button id="btnTentarFila">Enviar agora</button></h4>
+    <div id="listaFila"></div>
+  </div>
+
+  <div id="formulario">
+    <div class="secao">
+      <h3>📋 Informações da Obra</h3>
+      <div class="grade">
+        <div class="campo">
+          <label for="equipe">👷 Equipe *</label>
+          <input type="text" id="equipe" placeholder="Equipe / encarregado" autocomplete="off">
+        </div>
+        <div class="campo">
+          <label for="numeroObra">🔢 Nº da Obra *</label>
+          <input type="text" id="numeroObra" placeholder="Ex: 123456" autocomplete="off">
+        </div>
+        <div class="campo">
+          <label for="dataObra">📅 Data *</label>
+          <input type="date" id="dataObra">
+        </div>
+        <div class="campo">
+          <label for="qtdPostes">🔌 Qtd. de postes *</label>
+          <input type="number" id="qtdPostes" min="1" max="99" value="1" inputmode="numeric">
+        </div>
+        <div class="campo">
+          <label>✅ Status</label>
+          <label class="check"><input type="checkbox" id="obraConcluida"> Obra concluída</label>
+        </div>
+        <div class="campo largo">
+          <label for="observacoes">📝 Observações</label>
+          <textarea id="observacoes" placeholder="Pendências, materiais, algo que o fechamento precisa saber..."></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="camera" id="caixaCamera">
+      <a class="btn-camera" id="btnCamera" href="#">📸 Abrir Timestamp Camera</a>
+      <ol>
+        <li>Tire as fotos pelo <b>Timestamp Camera</b> (com o carimbo).</li>
+        <li>Volte para esta tela.</li>
+        <li>Em cada item, toque em <b>🖼️ Escolher da galeria</b> e selecione a foto certa.</li>
+      </ol>
+    </div>
+
+    <div class="alternar">
+      <button class="antes ativo" id="btnAntes">📸 ANTES <span class="contador" id="contAntes">0/4</span><small>(obrigatório)</small></button>
+      <button class="depois" id="btnDepois">📸 DEPOIS <span class="contador" id="contDepois">0/4</span><small>(obrigatório)</small></button>
+      <button class="ditais" id="btnDitais">⚡ DITAIS <span class="contador" id="contDitais">0/5</span><small>(opcional)</small></button>
+      <button class="equip" id="btnEquip">🔧 EQUIPAMENTO <span class="contador" id="contEquip">0</span><small>(opcional)</small></button>
+    </div>
+
+    <div class="barra-postes" id="barraEquip" style="display:none">
+      <h4>🔧 Escolha o equipamento <small id="infoEquip"></small></h4>
+      <div class="postes" id="equips"></div>
+      <div class="legenda">⚪ sem fotos &nbsp; 🟠 incompleto &nbsp; 🟢 Placa, Patrimônio e TAP</div>
+    </div>
+
+    <div class="barra-postes" id="barraPostes">
+      <h4>🔌 Escolha o poste <small id="infoPostes"></small></h4>
+      <div class="postes" id="postes"></div>
+      <div class="legenda">⚪ sem fotos &nbsp; 🟠 faltam fotos (antes ou depois) &nbsp; 🟢 completo</div>
+    </div>
+
+    <div class="titulo-poste antes" id="tituloPoste"></div>
+    <div class="slots" id="slots"></div>
+
+    <div class="resumo" id="resumo"></div>
+
+    <div class="acoes">
+      <button class="btn enviar" id="btnEnviar" disabled>📧 Enviar</button>
+      <button class="btn limpar" id="btnLimpar">🗑️ Limpar</button>
+    </div>
+
+    <div class="progresso" id="progresso">
+      <div class="barra"><div id="barra"></div></div>
+      <p id="textoProgresso"></p>
+    </div>
+  </div>
+
+  <div class="concluido" id="concluido">
+    <div class="icone">✅</div>
+    <h2 id="tituloConcluido">Registro salvo!</h2>
+    <p id="textoConcluido"></p>
+    <button class="btn enviar" id="btnNovaObra" style="max-width:320px;margin:0 auto;display:block">➕ Nova obra</button>
+  </div>
+
+  <div class="mensagem" id="mensagem"></div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ===================== CONFIGURAÇÃO =====================
+  var SLOTS = [
+    { id: 'base', nome: 'Base' },
+    { id: 'dan', nome: 'DAN' },
+    { id: 'estrutura', nome: 'Estrutura' },
+    { id: 'panoramica', nome: 'Panorâmica' }
+  ];
+  // DITAIS: uma vez por obra, 5 fotos opcionais, nesta ordem
+  var DITAIS = [
+    { id: 'desligar', nome: 'Desligar' },
+    { id: 'interromper', nome: 'Interromper' },
+    { id: 'testar', nome: 'Testar' },
+    { id: 'aterrar', nome: 'Aterrar' },
+    { id: 'sinalizar', nome: 'Sinalizar' }
+  ];
+  // EQUIPAMENTO: por obra, 1 foto por item, pode ter vários equipamentos (E1, E2...)
+  var EQUIP = [
+    { id: 'placa', nome: 'Placa' },
+    { id: 'patrimonio', nome: 'Patrimônio' },
+    { id: 'tap', nome: 'TAP' }
+  ];
+  var MAX_EQUIP = 30;
+  var MAX_POSTES = 99;
+  // App de câmera usado pelas equipes (Android). Se for outro app, troque o pacote aqui.
+  var CAMERA_PACOTE = 'com.jeyluta.timestampcamerafree';
+  var MAX_LADO = 1600;      // maior lado da foto após compressão (px)
+  var QUALIDADE = 0.82;     // qualidade JPEG
+  var TENTATIVAS = 3;       // tentativas por foto quando o sinal falha
+
+  // ===================== SERVIDOR (Apps Script) =====================
+  // Cole aqui o link do App da Web (termina em /exec). Veja o guia.
+  var API_URL = 'https://script.google.com/macros/s/AKfycbyYSvUEUxlo4_VRRU6rOztb9DQyVWURxfky54zdGoi0AIcch2h8xaMhtOEH_CJvDYyHyw/exec';
+  // Senha simples: TEM QUE SER IGUAL à CHAVE_APP do Codigo.gs.
+  var CHAVE = 'cmpl-50660b8e73181aed';
+  var TEMPO_LIMITE = 90000; // 90 s por chamada (sinal fraco)
+
+  // Aberto pelo link antigo do Apps Script? Então fala com o servidor direto (google.script.run).
+  var NO_APPS_SCRIPT = !!(window.google && google.script && google.script.run);
+  var MODO_TESTE = !NO_APPS_SCRIPT && !/^https:\/\/script\.google\.com\/.+\/exec$/.test(API_URL);
+
+  // ===================== ESTADO =====================
+  // fotos[numeroDoPoste] = { antes: {base, dan, estrutura, panoramica}, depois: {..., hastes: []} }
+  // ANTES e DEPOIS: as 4 fotos são obrigatórias em cada poste trabalhado. Hastes só no DEPOIS.
+  var estado = {
+    vista: 'antes',
+    poste: 1,
+    tentouEnviar: false,
+    enviando: false,
+    fotos: {},
+    ditais: novoDitais(),
+    equip: novoEquip()
+  };
+
+  function novoEquip() { return { qtd: 1, sel: 1, itens: {} }; }
+  function equipItem(n) {
+    if (!estado.equip.itens[n]) {
+      var it = {};
+      EQUIP.forEach(function (s) { it[s.id] = null; });
+      estado.equip.itens[n] = it;
+    }
+    return estado.equip.itens[n];
+  }
+  function totalEquipItem(n) {
+    var it = estado.equip.itens[n];
+    return it ? EQUIP.filter(function (s) { return it[s.id]; }).length : 0;
+  }
+  function equipsComFotos() {
+    var l = [];
+    for (var n = 1; n <= estado.equip.qtd; n++) if (totalEquipItem(n)) l.push(n);
+    return l;
+  }
+  function totalEquip() {
+    return equipsComFotos().reduce(function (s, n) { return s + totalEquipItem(n); }, 0);
+  }
+
+  function novoDitais() {
+    var d = {};
+    DITAIS.forEach(function (s) { d[s.id] = null; });
+    return d;
+  }
+  // Onde fica a foto de um slot: no DITAIS da obra ou no período de um poste
+  function alvo(n, p) {
+    if (p === 'ditais') return estado.ditais;
+    if (p === 'equip') return equipItem(n);
+    return poste(n)[p];
+  }
+  // A foto escolhida pertence ao que está aberto na tela agora?
+  function eNaTela(n, p) {
+    if (p !== estado.vista) return false;
+    if (p === 'ditais') return true;
+    if (p === 'equip') return n === estado.equip.sel;
+    return n === estado.poste;
+  }
+
+  function novoPeriodo() {
+    var p = { hastes: [] };
+    SLOTS.forEach(function (s) { p[s.id] = null; });
+    return p;
+  }
+  function poste(n) {
+    if (!estado.fotos[n]) estado.fotos[n] = { antes: novoPeriodo(), depois: novoPeriodo() };
+    return estado.fotos[n];
+  }
+
+  function $(id) { return document.getElementById(id); }
+
+  // ===================== UTILITÁRIOS =====================
+  function hojeLocal() {
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function dataBR(iso) { return iso ? iso.split('-').reverse().join('/') : '-'; }
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function limparNome(s) {
+    return String(s).normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'obra';
+  }
+  function codPoste(n) { return 'P' + String(n).padStart(2, '0'); } // P02: mantém a ordem nos arquivos
+
+  var urls = new WeakMap();
+  function urlDe(blob) {
+    if (!urls.has(blob)) urls.set(blob, URL.createObjectURL(blob));
+    return urls.get(blob);
+  }
+
+  function qtdPostes() {
+    var n = parseInt($('qtdPostes').value, 10);
+    return isNaN(n) || n < 1 ? 1 : Math.min(n, MAX_POSTES);
+  }
+
+  function dados() {
+    return {
+      equipe: $('equipe').value.trim(),
+      numeroObra: $('numeroObra').value.trim(),
+      dataObra: $('dataObra').value,
+      qtdPostes: qtdPostes(),
+      obraConcluida: $('obraConcluida').checked,
+      observacoes: $('observacoes').value.trim()
+    };
+  }
+
+  // ----- contagens -----
+  function preenchidas(n, p) {
+    var f = estado.fotos[n];
+    if (!f) return 0;
+    return SLOTS.filter(function (s) { return f[p][s.id]; }).length;
+  }
+  function totalPeriodo(n, p) {
+    var f = estado.fotos[n];
+    return f ? preenchidas(n, p) + (p === 'depois' ? f[p].hastes.length : 0) : 0;
+  }
+  function totalPoste(n) { return totalPeriodo(n, 'antes') + totalPeriodo(n, 'depois'); }
+  function postesComFotos() {
+    return Object.keys(estado.fotos).map(Number).filter(function (n) { return totalPoste(n) > 0; })
+      .sort(function (a, b) { return a - b; });
+  }
+  function postesIncompletos() {
+    return postesComFotos().filter(function (n) { return !posteCompleto(n); });
+  }
+  function posteCompleto(n) {
+    return preenchidas(n, 'antes') === SLOTS.length && preenchidas(n, 'depois') === SLOTS.length;
+  }
+  // Primeiro período com foto faltando ('antes' ou 'depois') e os nomes dos itens que faltam
+  function oQueFalta(n) {
+    for (var p of ['antes', 'depois']) {
+      var faltam = SLOTS.filter(function (s) { return !poste(n)[p][s.id]; }).map(function (s) { return s.nome; });
+      if (faltam.length) return { periodo: p, itens: faltam };
+    }
+    return null;
+  }
+  function totalDitais() {
+    return DITAIS.filter(function (s) { return estado.ditais[s.id]; }).length;
+  }
+  function totalGeral() {
+    return totalDitais() + totalEquip() + postesComFotos().reduce(function (s, n) { return s + totalPoste(n); }, 0);
+  }
+  function maiorPosteComFotos() {
+    var l = postesComFotos();
+    return l.length ? l[l.length - 1] : 0;
+  }
+
+  // ===================== COMPRESSÃO (mantendo EXIF / GPS) =====================
+  // As fotos do celular têm 3–8 MB. Reduzimos para ~300–600 KB para caber no e-mail
+  // e subir rápido com sinal fraco. Os dados EXIF (data, GPS) são copiados para a foto nova.
+  function carregarImagem(file) {
+    return new Promise(function (res, rej) {
+      var img = new Image();
+      var u = URL.createObjectURL(file);
+      img.onload = function () { URL.revokeObjectURL(u); res(img); };
+      img.onerror = function () { URL.revokeObjectURL(u); rej(new Error('não foi possível abrir a imagem')); };
+      img.src = u;
+    });
+  }
+
+  function extrairExif(buf) {
+    if (buf[0] !== 0xFF || buf[1] !== 0xD8) return null;
+    var p = 2;
+    while (p + 4 <= buf.length) {
+      if (buf[p] !== 0xFF) return null;
+      var marcador = buf[p + 1];
+      if (marcador === 0xDA || marcador === 0xD9) return null;
+      var tam = (buf[p + 2] << 8) | buf[p + 3];
+      if (marcador === 0xE1 && buf[p + 4] === 0x45 && buf[p + 5] === 0x78 && buf[p + 6] === 0x69 && buf[p + 7] === 0x66) {
+        if (p + 2 + tam > buf.length) return null;
+        var seg = buf.slice(p, p + 2 + tam);
+        zerarOrientacao(seg);
+        return seg;
+      }
+      p += 2 + tam;
+    }
+    return null;
+  }
+
+  // A imagem já sai "em pé" do canvas; zera a tag de orientação para não girar duas vezes.
+  function zerarOrientacao(seg) {
+    var t = 10, le = seg[t] === 0x49;
+    function r16(o) { return le ? seg[o] | (seg[o + 1] << 8) : (seg[o] << 8) | seg[o + 1]; }
+    function r32(o) {
+      return (le ? (seg[o] | (seg[o + 1] << 8) | (seg[o + 2] << 16) | (seg[o + 3] << 24))
+                 : ((seg[o] << 24) | (seg[o + 1] << 16) | (seg[o + 2] << 8) | seg[o + 3])) >>> 0;
+    }
+    var ifd = t + r32(t + 4);
+    if (ifd + 2 > seg.length) return;
+    var n = r16(ifd);
+    for (var i = 0; i < n; i++) {
+      var e = ifd + 2 + i * 12;
+      if (e + 12 > seg.length) return;
+      if (r16(e) === 0x0112) {
+        if (le) { seg[e + 8] = 1; seg[e + 9] = 0; } else { seg[e + 8] = 0; seg[e + 9] = 1; }
+        return;
+      }
+    }
+  }
+
+  async function comprimir(file) {
+    try {
+      var img = await carregarImagem(file);
+      var w = img.naturalWidth, h = img.naturalHeight;
+      var fator = Math.min(1, MAX_LADO / Math.max(w, h));
+      var cw = Math.round(w * fator), ch = Math.round(h * fator);
+      var canvas = document.createElement('canvas');
+      canvas.width = cw; canvas.height = ch;
+      canvas.getContext('2d').drawImage(img, 0, 0, cw, ch);
+      var jpeg = await new Promise(function (r) { canvas.toBlob(r, 'image/jpeg', QUALIDADE); });
+      if (!jpeg) return file;
+      if (jpeg.size >= file.size && file.type === 'image/jpeg') return file; // já era pequena
+      var cabeca = new Uint8Array(await file.slice(0, 256 * 1024).arrayBuffer());
+      var exif = extrairExif(cabeca);
+      if (!exif) return jpeg;
+      return new Blob([jpeg.slice(0, 2), exif, jpeg.slice(2)], { type: 'image/jpeg' });
+    } catch (e) {
+      return file; // se o navegador não conseguir abrir (ex.: HEIC), envia a original
+    }
+  }
+
+  // ===================== RASCUNHO NO APARELHO (IndexedDB) =====================
+  var db = null;
+  function abrirBanco() {
+    return new Promise(function (res) {
+      try {
+        var req = indexedDB.open('RegistroObras', 2);
+        req.onupgradeneeded = function () {
+          var b = req.result;
+          if (!b.objectStoreNames.contains('rascunho')) b.createObjectStore('rascunho');
+          // fila: um registro por obra pronta para envio (só dados, pequeno)
+          if (!b.objectStoreNames.contains('fila')) b.createObjectStore('fila', { keyPath: 'id' });
+          // filaFotos: as fotos de cada registro da fila, chave "idRegistro|nome.jpg"
+          if (!b.objectStoreNames.contains('filaFotos')) b.createObjectStore('filaFotos');
+        };
+        req.onsuccess = function () { db = req.result; res(); };
+        req.onerror = function () { res(); };
+      } catch (e) { res(); }
+    });
+  }
+
+  var buffers = new WeakMap();
+  async function paraGuardar(blob) {
+    if (!buffers.has(blob)) buffers.set(blob, await blob.arrayBuffer());
+    return { tipo: blob.type || 'image/jpeg', dados: buffers.get(blob) };
+  }
+  function deGuardado(o) { var b = new Blob([o.dados], { type: o.tipo }); buffers.set(b, o.dados); return b; }
+
+  var timerSalvar = null;
+  function agendarSalvar() {
+    clearTimeout(timerSalvar);
+    timerSalvar = setTimeout(salvarRascunho, 600);
+  }
+
+  async function salvarRascunho() {
+    try { localStorage.setItem('registroEquipe', $('equipe').value.trim()); } catch (e) {}
+    if (!db) return;
+    try {
+      var guardar = {};
+      for (var n of postesComFotos()) {
+        guardar[n] = {};
+        for (var p of ['antes', 'depois']) {
+          var orig = estado.fotos[n][p], g = { hastes: [] };
+          for (var s of SLOTS) g[s.id] = orig[s.id] ? await paraGuardar(orig[s.id]) : null;
+          for (var hb of orig.hastes) g.hastes.push(await paraGuardar(hb));
+          guardar[n][p] = g;
+        }
+      }
+      var ditaisG = {};
+      for (var sd of DITAIS) ditaisG[sd.id] = estado.ditais[sd.id] ? await paraGuardar(estado.ditais[sd.id]) : null;
+      var equipG = { qtd: estado.equip.qtd, sel: estado.equip.sel, itens: {} };
+      for (var en of equipsComFotos()) {
+        equipG.itens[en] = {};
+        for (var se of EQUIP) equipG.itens[en][se.id] = estado.equip.itens[en][se.id] ? await paraGuardar(estado.equip.itens[en][se.id]) : null;
+      }
+      await new Promise(function (res, rej) {
+        var tx = db.transaction('rascunho', 'readwrite');
+        tx.objectStore('rascunho').put({ versao: 2, dados: dados(), postes: guardar, ditais: ditaisG, equip: equipG, poste: estado.poste }, 'atual');
+        tx.oncomplete = res; tx.onerror = function () { rej(tx.error); };
+      });
+      var d = new Date();
+      $('infoRascunho').textContent = '💾 Rascunho salvo no aparelho às ' +
+        String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    } catch (e) {
+      $('infoRascunho').textContent = '⚠️ Não foi possível salvar o rascunho (memória cheia?)';
+    }
+  }
+
+  function carregarRascunho() {
+    return new Promise(function (res) {
+      if (!db) return res(null);
+      try {
+        var req = db.transaction('rascunho', 'readonly').objectStore('rascunho').get('atual');
+        req.onsuccess = function () { res(req.result || null); };
+        req.onerror = function () { res(null); };
+      } catch (e) { res(null); }
+    });
+  }
+
+  function apagarRascunho() {
+    if (!db) return;
+    try { db.transaction('rascunho', 'readwrite').objectStore('rascunho').delete('atual'); } catch (e) {}
+  }
+
+  // ===================== TELA =====================
+  function renderPostes() {
+    var qtd = qtdPostes();
+    var h = '';
+    for (var n = 1; n <= qtd; n++) {
+      var tot = totalPoste(n);
+      var classe = tot === 0 ? '' : (posteCompleto(n) ? 'completo' : 'parcial');
+      var sub = tot === 0 ? '—' : tot + ' foto' + (tot > 1 ? 's' : '');
+      h += '<button class="poste ' + classe + (n === estado.poste ? ' selecionado' : '') + '" data-poste="' + n + '">P' + n +
+        '<small>' + sub + '</small></button>';
+    }
+    if (qtd < MAX_POSTES) h += '<button class="poste mais" data-acao="mais-poste" title="Adicionar poste">+<small>poste</small></button>';
+    if (qtd > 1) {
+      h += confirmarRemover === qtd
+        ? '<button class="poste menos confirmar" data-acao="menos-poste">Apagar P' + qtd + '?<small>toque de novo</small></button>'
+        : '<button class="poste menos" data-acao="menos-poste" title="Remover o último poste (P' + qtd + ')">−<small>P' + qtd + '</small></button>';
+    }
+    $('postes').innerHTML = h;
+    var trab = postesComFotos().length;
+    $('infoPostes').textContent = trab + ' de ' + qtd + ' com fotos';
+  }
+
+  function renderEquips() {
+    var q = estado.equip.qtd, h = '';
+    for (var n = 1; n <= q; n++) {
+      var t = totalEquipItem(n);
+      var classe = t === 0 ? '' : (t === EQUIP.length ? 'completo' : 'parcial');
+      h += '<button class="poste ' + classe + (n === estado.equip.sel ? ' selecionado' : '') + '" data-equip="' + n + '">E' + n +
+        '<small>' + (t ? t + '/' + EQUIP.length : '—') + '</small></button>';
+    }
+    if (q < MAX_EQUIP) h += '<button class="poste mais" data-acao="mais-equip" title="Adicionar equipamento">+<small>equip.</small></button>';
+    if (q > 1) {
+      h += confirmarRemoverEquip === q
+        ? '<button class="poste menos confirmar" data-acao="menos-equip">Apagar E' + q + '?<small>toque de novo</small></button>'
+        : '<button class="poste menos" data-acao="menos-equip" title="Remover o último equipamento (E' + q + ')">−<small>E' + q + '</small></button>';
+    }
+    $('equips').innerHTML = h;
+    $('infoEquip').textContent = equipsComFotos().length + ' de ' + q + ' com fotos';
+  }
+
+  function renderSlotsEquip() {
+    var n = estado.equip.sel, it = equipItem(n);
+    var tit = $('tituloPoste');
+    tit.className = 'titulo-poste equip';
+    tit.textContent = '🔧 Equipamento E' + n + ' (opcional)';
+    var h = '';
+    EQUIP.forEach(function (s, i) {
+      var b = it[s.id];
+      var at = ' data-poste="' + n + '" data-periodo="equip" data-slot="' + s.id + '"';
+      h += '<div class="slot opcional ' + (b ? 'cheio' : '') + '">' +
+        '<div class="slot-topo"><span class="ponto ' + (b ? 'ok' : 'opc') + '"></span>' +
+        '<b>' + (i + 1) + '. ' + s.nome + '</b><span class="badge opc">Opcional</span></div>' +
+        (b ? '<div class="preview"><img src="' + urlDe(b) + '" alt="' + s.nome + '">' +
+             '<button class="remover" data-acao="remover"' + at + ' aria-label="Remover">×</button></div>' : '') +
+        '<label class="btn-foto">' + (b ? '🔄 Trocar foto' : '🖼️ Escolher da galeria') +
+        '<input type="file" accept="image/*"' + at + '></label></div>';
+    });
+    $('slots').innerHTML = h;
+  }
+
+  // Remove o último equipamento. Se tiver fotos, pede um segundo toque.
+  var confirmarRemoverEquip = null, timerRemoverEquip = null;
+  function removerUltimoEquip() {
+    var q = estado.equip.qtd;
+    if (q <= 1) return;
+    clearTimeout(timerRemoverEquip);
+    if (totalEquipItem(q) > 0 && confirmarRemoverEquip !== q) {
+      confirmarRemoverEquip = q;
+      renderEquips();
+      mensagem('O E' + q + ' tem ' + totalEquipItem(q) + ' foto(s). Toque de novo em "Apagar E' + q + '?" para remover.', 'erro');
+      timerRemoverEquip = setTimeout(function () { confirmarRemoverEquip = null; renderEquips(); }, 4000);
+      return;
+    }
+    confirmarRemoverEquip = null;
+    var tinha = totalEquipItem(q) > 0;
+    delete estado.equip.itens[q];
+    estado.equip.qtd = q - 1;
+    if (estado.equip.sel > q - 1) estado.equip.sel = q - 1;
+    renderEquips(); renderSlots(); houveMudanca();
+    mensagem('Equipamento E' + q + ' removido' + (tinha ? ' com as fotos.' : '.'), 'sucesso');
+  }
+
+  function renderSlotsDitais() {
+    var tit = $('tituloPoste');
+    tit.className = 'titulo-poste ditais';
+    tit.textContent = '⚡ DITAIS da obra (opcional)';
+    var h = '';
+    DITAIS.forEach(function (s, i) {
+      var b = estado.ditais[s.id];
+      var at = ' data-poste="0" data-periodo="ditais" data-slot="' + s.id + '"';
+      h += '<div class="slot opcional ' + (b ? 'cheio' : '') + '">' +
+        '<div class="slot-topo"><span class="ponto ' + (b ? 'ok' : 'opc') + '"></span>' +
+        '<b>' + (i + 1) + '. ' + s.nome + '</b><span class="badge opc">Opcional</span></div>' +
+        (b ? '<div class="preview"><img src="' + urlDe(b) + '" alt="' + s.nome + '">' +
+             '<button class="remover" data-acao="remover"' + at + ' aria-label="Remover">×</button></div>' : '') +
+        '<label class="btn-foto">' + (b ? '🔄 Trocar foto' : '🖼️ Escolher da galeria') +
+        '<input type="file" accept="image/*"' + at + '></label></div>';
+    });
+    $('slots').innerHTML = h;
+  }
+
+  function renderSlots() {
+    if (estado.vista === 'ditais') return renderSlotsDitais();
+    if (estado.vista === 'equip') return renderSlotsEquip();
+    var n = estado.poste, p = estado.vista;
+    var f = poste(n)[p];
+    var obrig = true; // ANTES e DEPOIS: as 4 fotos são obrigatórias
+    var tit = $('tituloPoste');
+    tit.className = 'titulo-poste ' + p;
+    tit.textContent = '🔌 Poste P' + n + ' — ' + (p === 'depois' ? 'DEPOIS' : 'ANTES') + ' (obrigatório)';
+
+    var attrs = function (slot) { return ' data-poste="' + n + '" data-periodo="' + p + '" data-slot="' + slot + '"'; };
+    var h = '';
+    SLOTS.forEach(function (s, i) {
+      var b = f[s.id];
+      h += '<div class="slot ' + (b ? 'cheio ' : '') + (obrig ? '' : 'opcional') + '">' +
+        '<div class="slot-topo"><span class="ponto ' + (b ? 'ok' : (obrig ? 'falta' : 'opc')) + '"></span>' +
+        '<b>' + (i + 1) + '. ' + s.nome + '</b>' +
+        '<span class="badge ' + (obrig ? 'obr">Obrigatório' : 'opc">Opcional') + '</span></div>' +
+        (b ? '<div class="preview"><img src="' + urlDe(b) + '" alt="' + s.nome + '">' +
+             '<button class="remover" data-acao="remover"' + attrs(s.id) + ' aria-label="Remover">×</button></div>' : '') +
+        '<label class="btn-foto">' + (b ? '🔄 Trocar foto' : '🖼️ Escolher da galeria') +
+        '<input type="file" accept="image/*"' + attrs(s.id) + '></label></div>';
+    });
+    if (p !== 'depois') { $('slots').innerHTML = h; return; } // hastes só no DEPOIS
+    var hs = f.hastes;
+    h += '<div class="slot opcional ' + (hs.length ? 'cheio' : '') + '">' +
+      '<div class="slot-topo"><span class="ponto ' + (hs.length ? 'ok' : 'opc') + '"></span><b>5. Hastes</b>' +
+      '<span class="badge opc">Opcional</span><span class="qtd">' + hs.length + ' foto(s)</span></div>' +
+      (hs.length ? '<div class="galeria">' + hs.map(function (b, i) {
+        return '<div class="preview"><img src="' + urlDe(b) + '" alt="Haste ' + (i + 1) + '">' +
+          '<button class="remover" data-acao="remover-haste"' + attrs('hastes') + ' data-indice="' + i + '" aria-label="Remover">×</button></div>';
+      }).join('') + '</div>' : '') +
+      '<label class="btn-foto">🖼️ Escolher hastes da galeria<input type="file" accept="image/*" multiple' + attrs('hastes') + '></label></div>';
+    $('slots').innerHTML = h;
+  }
+
+  function renderTudo() {
+    ultimaQtd = qtdPostes();
+    renderPostes();
+    renderEquips();
+    renderSlots();
+    atualizarTela();
+  }
+
+  function atualizarTela() {
+    var d = dados();
+    var faltaDados = !d.equipe || !d.numeroObra || !d.dataObra;
+    var comFotos = postesComFotos();
+    var incompletos = postesIncompletos();
+    var pronto = !faltaDados && comFotos.length > 0 && incompletos.length === 0;
+
+    ['equipe', 'numeroObra', 'dataObra'].forEach(function (id) {
+      $(id).classList.toggle('erro', estado.tentouEnviar && !$(id).value.trim());
+    });
+
+    $('contAntes').textContent = preenchidas(estado.poste, 'antes') + '/' + SLOTS.length;
+    $('contDepois').textContent = preenchidas(estado.poste, 'depois') + '/' + SLOTS.length;
+    $('contDitais').textContent = totalDitais() + '/' + DITAIS.length;
+    $('contEquip').textContent = totalEquip();
+
+    var total = totalGeral();
+    var btn = $('btnEnviar');
+    btn.classList.toggle('incompleto', !pronto);
+    if (estado.enviando) {
+      btn.disabled = true;
+    } else if (pronto) {
+      btn.disabled = false;
+      btn.textContent = '📧 Enviar ' + total + ' foto(s) de ' + comFotos.length + ' poste(s)';
+    } else {
+      var falta = [];
+      if (!comFotos.length) falta.push('fotos de pelo menos 1 poste');
+      else if (incompletos.length) falta.push('fotos de ' + incompletos.map(function (n) { return 'P' + n; }).join(', '));
+      if (faltaDados) falta.push('dados da obra');
+      btn.disabled = false; // clicável para mostrar o que falta
+      btn.textContent = '📧 Falta: ' + falta.join(' + ');
+    }
+
+    var linhasPostes = comFotos.map(function (n) {
+      var ok = posteCompleto(n);
+      return '<div><span>' + (ok ? '🟢' : '🟠') + ' P' + n + '</span><span>Antes ' + preenchidas(n, 'antes') + '/4' +
+        ' · Depois ' + preenchidas(n, 'depois') + '/4' +
+        (poste(n).depois.hastes.length ? ' + ' + poste(n).depois.hastes.length + ' haste(s)' : '') + '</span></div>';
+    }).join('');
+
+    $('resumo').innerHTML =
+      '<div><span>Obra</span><span>' + esc(d.numeroObra || '-') + '</span></div>' +
+      '<div><span>Equipe</span><span>' + esc(d.equipe || '-') + '</span></div>' +
+      '<div><span>Data</span><span>' + dataBR(d.dataObra) + '</span></div>' +
+      '<div><span>Status</span><span>' + (d.obraConcluida ? '✅ Concluída' : '🔄 Em andamento') + '</span></div>' +
+      '<div><span>Postes trabalhados</span><span>' + comFotos.length + ' de ' + d.qtdPostes + '</span></div>' +
+      '<div><span>⚡ DITAIS</span><span>' + (totalDitais() ? totalDitais() + '/5 (' + DITAIS.filter(function (s) { return estado.ditais[s.id]; }).map(function (s) { return s.nome; }).join(', ') + ')' : 'Nenhuma') + '</span></div>' +
+      '<div><span>🔧 Equipamentos</span><span>' + (equipsComFotos().length ? equipsComFotos().map(function (n) { return 'E' + n + ' ' + totalEquipItem(n) + '/3'; }).join(' · ') : 'Nenhum') + '</span></div>' +
+      linhasPostes +
+      '<div><span>Total</span><span><b>' + total + ' foto(s)</b></span></div>';
+  }
+
+  function trocarVista(v) {
+    estado.vista = v;
+    $('btnAntes').classList.toggle('ativo', v === 'antes');
+    $('btnDepois').classList.toggle('ativo', v === 'depois');
+    $('btnDitais').classList.toggle('ativo', v === 'ditais');
+    $('btnEquip').classList.toggle('ativo', v === 'equip');
+    $('barraPostes').style.display = (v === 'antes' || v === 'depois') ? '' : 'none';
+    $('barraEquip').style.display = v === 'equip' ? '' : 'none';
+    renderSlots();
+    atualizarTela();
+  }
+
+  function selecionarPoste(n) {
+    estado.poste = n;
+    renderPostes();
+    renderSlots();
+    atualizarTela();
+  }
+
+  var timerMsg = null;
+  function mensagem(texto, tipo, fixa) {
+    var m = $('mensagem');
+    m.textContent = texto;
+    m.className = 'mensagem ' + tipo;
+    clearTimeout(timerMsg);
+    if (!fixa) timerMsg = setTimeout(function () { m.className = 'mensagem'; }, 4000);
+  }
+
+  function conexao() {
+    var a = $('avisoConexao');
+    if (navigator.onLine) { a.textContent = '🌐 Online'; a.className = 'aviso online'; }
+    else { a.textContent = '📱 Sem internet: pode registrar e tocar em Enviar. As fotos ficam no aparelho e vão sozinhas quando o sinal voltar.'; a.className = 'aviso offline'; }
+    if (typeof renderFila === 'function') renderFila();
+    if (navigator.onLine && typeof processarFila === 'function') processarFila();
+  }
+
+  function houveMudanca() {
+    renderPostes();
+    atualizarTela();
+    agendarSalvar();
+  }
+
+  // ===================== EVENTOS =====================
+  async function aoEscolherArquivo(input) {
+    var n = parseInt(input.dataset.poste, 10), p = input.dataset.periodo, slot = input.dataset.slot;
+    var arquivos = Array.prototype.filter.call(input.files, function (f) { return /^image\//.test(f.type) || /\.(jpe?g|png|heic|heif|webp)$/i.test(f.name); });
+    input.value = '';
+    if (!arquivos.length) { mensagem('Selecione uma imagem.', 'erro'); return; }
+    mensagem('⏳ Preparando ' + arquivos.length + ' foto(s)...', 'info', true);
+    var prontas = [];
+    for (var f of arquivos) prontas.push(await comprimir(f));
+    if (slot === 'hastes') {
+      Array.prototype.push.apply(poste(n)[p].hastes, prontas);
+      mensagem('+' + prontas.length + ' haste(s) no P' + n, 'sucesso');
+    } else {
+      alvo(n, p)[slot] = prontas[0];
+      $('mensagem').className = 'mensagem';
+    }
+    if (eNaTela(n, p)) renderSlots();
+    if (p === 'equip') renderEquips();
+    houveMudanca();
+  }
+
+  // Remove o último poste. Se ele tiver fotos, pede um segundo toque para confirmar.
+  var confirmarRemover = null, timerRemover = null;
+  function removerUltimoPoste() {
+    var ultimo = qtdPostes();
+    if (ultimo <= 1) return;
+    clearTimeout(timerRemover);
+    if (totalPoste(ultimo) > 0 && confirmarRemover !== ultimo) {
+      confirmarRemover = ultimo;
+      renderPostes();
+      mensagem('O P' + ultimo + ' tem ' + totalPoste(ultimo) + ' foto(s). Toque de novo em "Apagar P' + ultimo + '?" para remover o poste e as fotos.', 'erro');
+      timerRemover = setTimeout(function () { confirmarRemover = null; renderPostes(); }, 4000);
+      return;
+    }
+    confirmarRemover = null;
+    var tinhaFotos = totalPoste(ultimo) > 0;
+    delete estado.fotos[ultimo];
+    $('qtdPostes').value = ultimo - 1;
+    ultimaQtd = ultimo - 1;
+    if (estado.poste > ultimo - 1) estado.poste = ultimo - 1;
+    renderSlots();
+    houveMudanca();
+    mensagem('Poste P' + ultimo + ' removido' + (tinhaFotos ? ' com as fotos.' : '.'), 'sucesso');
+  }
+
+  var ultimaQtd = null;
+  function aoMudarQtdPostes() {
+    var minimo = maiorPosteComFotos();
+    if (qtdPostes() < minimo) {
+      $('qtdPostes').value = minimo;
+      mensagem('O poste P' + minimo + ' já tem fotos. Remova as fotos dele antes de diminuir a quantidade.', 'erro');
+    }
+    // Só redesenha se o número mudou (evita "engolir" o toque no poste logo após digitar)
+    if (qtdPostes() === ultimaQtd) return;
+    ultimaQtd = qtdPostes();
+    if (estado.poste > qtdPostes()) estado.poste = qtdPostes();
+    renderSlots();
+    houveMudanca();
+  }
+
+  function ligarEventos() {
+    $('btnAntes').onclick = function () { trocarVista('antes'); };
+    $('btnDepois').onclick = function () { trocarVista('depois'); };
+    $('btnDitais').onclick = function () { trocarVista('ditais'); };
+    $('btnEquip').onclick = function () { trocarVista('equip'); };
+
+    document.addEventListener('change', function (e) {
+      var t = e.target;
+      if (t.type === 'file' && t.dataset.periodo) aoEscolherArquivo(t);
+    });
+
+    document.addEventListener('click', function (e) {
+      var bf = e.target.closest('[data-acao="remover-fila"]');
+      if (bf) { removerDaFila(bf.dataset.id); return; }
+      if (estado.enviando) return;
+      var bp = e.target.closest('.poste[data-poste]');
+      if (bp) { selecionarPoste(parseInt(bp.dataset.poste, 10)); return; }
+      var be = e.target.closest('.poste[data-equip]');
+      if (be) { estado.equip.sel = parseInt(be.dataset.equip, 10); renderEquips(); renderSlots(); return; }
+
+      var b = e.target.closest('[data-acao]');
+      if (!b) return;
+      if (b.dataset.acao === 'menos-poste') { removerUltimoPoste(); return; }
+      if (b.dataset.acao === 'menos-equip') { removerUltimoEquip(); return; }
+      if (b.dataset.acao === 'mais-equip') {
+        estado.equip.qtd = Math.min(estado.equip.qtd + 1, MAX_EQUIP);
+        estado.equip.sel = estado.equip.qtd;
+        renderEquips(); renderSlots(); houveMudanca();
+        return;
+      }
+      if (b.dataset.acao === 'mais-poste') {
+        $('qtdPostes').value = qtdPostes() + 1;
+        estado.poste = qtdPostes();
+        aoMudarQtdPostes();
+        return;
+      }
+      var n = parseInt(b.dataset.poste, 10), p = b.dataset.periodo;
+      if (b.dataset.acao === 'remover') alvo(n, p)[b.dataset.slot] = null;
+      if (p === 'equip') renderEquips();
+      if (b.dataset.acao === 'remover-haste') poste(n)[p].hastes.splice(parseInt(b.dataset.indice, 10), 1);
+      renderSlots();
+      houveMudanca();
+    });
+
+    ['equipe', 'numeroObra', 'dataObra', 'obraConcluida', 'observacoes'].forEach(function (id) {
+      $(id).addEventListener('input', houveMudanca);
+      $(id).addEventListener('change', houveMudanca);
+    });
+    $('qtdPostes').addEventListener('change', aoMudarQtdPostes);
+    $('qtdPostes').addEventListener('input', function () {
+      if ($('qtdPostes').value !== '' && qtdPostes() >= maiorPosteComFotos()) aoMudarQtdPostes();
+    });
+
+    $('btnEnviar').onclick = enviar;
+    $('btnNovaObra').onclick = novaObra;
+    $('btnTentarFila').onclick = function () {
+      if (!navigator.onLine) { mensagem('Sem internet agora. O envio começa sozinho quando o sinal voltar.', 'erro'); return; }
+      processarFila();
+    };
+
+    var timerLimpar = null;
+    $('btnLimpar').onclick = function () {
+      if (estado.enviando) return;
+      var b = $('btnLimpar');
+      if (!b.classList.contains('confirmar')) {
+        b.classList.add('confirmar');
+        b.textContent = '⚠️ Toque de novo para apagar tudo';
+        timerLimpar = setTimeout(function () { b.classList.remove('confirmar'); b.textContent = '🗑️ Limpar'; }, 3500);
+        return;
+      }
+      clearTimeout(timerLimpar);
+      b.classList.remove('confirmar'); b.textContent = '🗑️ Limpar';
+      limparTudo(false);
+      mensagem('🗑️ Tudo limpo.', 'sucesso');
+    };
+
+    window.addEventListener('online', conexao);
+    window.addEventListener('offline', conexao);
+  }
+
+  function limparTudo(manterEquipe) {
+    var equipe = $('equipe').value;
+    ['equipe', 'numeroObra', 'observacoes'].forEach(function (id) { $(id).value = ''; });
+    if (manterEquipe) $('equipe').value = equipe;
+    $('dataObra').value = hojeLocal();
+    $('qtdPostes').value = 1;
+    $('obraConcluida').checked = false;
+    estado.fotos = {};
+    estado.ditais = novoDitais();
+    estado.equip = novoEquip();
+    estado.poste = 1;
+    estado.tentouEnviar = false;
+    apagarRascunho();
+    $('infoRascunho').textContent = '';
+    estado.vista = 'antes';
+    $('btnAntes').classList.add('ativo');
+    $('btnDepois').classList.remove('ativo');
+    $('btnDitais').classList.remove('ativo');
+    $('btnEquip').classList.remove('ativo');
+    $('barraPostes').style.display = '';
+    $('barraEquip').style.display = 'none';
+    renderTudo();
+  }
+
+  function novaObra() {
+    $('concluido').classList.remove('mostrar');
+    $('formulario').style.display = '';
+    limparTudo(true);
+    window.scrollTo(0, 0);
+  }
+
+  // ===================== ENVIO (fila no aparelho) =====================
+  // Ao tocar em Enviar, a obra vai para a FILA guardada no aparelho (IndexedDB).
+  // A fila é enviada sozinha sempre que houver internet com o app aberto,
+  // continuando de onde parou se o sinal cair no meio.
+
+  function chamar(acao) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    if (MODO_TESTE) return simulado[acao].apply(null, args);
+    if (NO_APPS_SCRIPT) {
+      return new Promise(function (res, rej) {
+        var r = google.script.run.withSuccessHandler(res).withFailureHandler(function (e) {
+          rej(new Error((e && e.message) || String(e)));
+        });
+        r[acao].apply(r, args);
+      });
+    }
+    var ctrl = window.AbortController ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, TEMPO_LIMITE) : null;
+    return fetch(API_URL, {
+      method: 'POST',
+      // text/plain evita a "pré-checagem" (CORS) que o Apps Script não responde
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ acao: acao, chave: CHAVE, args: args }),
+      redirect: 'follow',
+      signal: ctrl ? ctrl.signal : undefined
+    }).then(function (resp) {
+      if (!resp.ok) throw new Error('servidor respondeu ' + resp.status);
+      return resp.json().catch(function () {
+        throw new Error('resposta inválida do servidor (confira se a implantação está como "Qualquer pessoa")');
+      });
+    }).then(function (r) {
+      if (!r || !r.ok) { var e = new Error((r && r.erro) || 'erro no servidor'); e.servidor = true; throw e; }
+      return r.resultado;
+    }, function (e) {
+      if (e && e.servidor) throw e;
+      if (e && e.name === 'AbortError') throw new Error('tempo esgotado (sinal fraco)');
+      if (e && e.name === 'TypeError') throw new Error('sem conexão com o servidor');
+      throw e;
+    }).finally(function () { clearTimeout(timer); });
+  }
+
+  async function comRetentativa(fn) {
+    var ultimoErro;
+    for (var i = 0; i < TENTATIVAS; i++) {
+      try { return await fn(); }
+      catch (e) {
+        ultimoErro = e;
+        if (!navigator.onLine) break; // caiu o sinal: não adianta insistir agora
+        await new Promise(function (r) { setTimeout(r, 1500 * (i + 1)); });
+      }
+    }
+    throw ultimoErro;
+  }
+
+  function blobBase64(blob) {
+    return new Promise(function (res, rej) {
+      var fr = new FileReader();
+      fr.onload = function () { res(String(fr.result).split(',')[1]); };
+      fr.onerror = rej;
+      fr.readAsDataURL(blob);
+    });
+  }
+
+  // Nome dos arquivos: OBRA_P02_DEPOIS_1-base.jpg / OBRA_P02_DEPOIS_5-haste-01.jpg
+  function montarLista() {
+    var obra = limparNome($('numeroObra').value.trim());
+    var lista = [];
+    DITAIS.forEach(function (s, i) {
+      if (estado.ditais[s.id]) lista.push({ nome: obra + '_DITAIS_' + (i + 1) + '-' + s.id + '.jpg', blob: estado.ditais[s.id] });
+    });
+    equipsComFotos().forEach(function (n) {
+      EQUIP.forEach(function (s, i) {
+        var b = estado.equip.itens[n][s.id];
+        if (b) lista.push({ nome: obra + '_EQUIP_E' + String(n).padStart(2, '0') + '_' + (i + 1) + '-' + s.id + '.jpg', blob: b });
+      });
+    });
+    postesComFotos().forEach(function (n) {
+      ['antes', 'depois'].forEach(function (p) {
+        var pref = obra + '_' + codPoste(n) + '_' + p.toUpperCase() + '_';
+        var f = estado.fotos[n][p];
+        SLOTS.forEach(function (s, i) {
+          if (f[s.id]) lista.push({ nome: pref + (i + 1) + '-' + s.id + '.jpg', blob: f[s.id] });
+        });
+        if (p === 'depois') f.hastes.forEach(function (b, i) {
+          lista.push({ nome: pref + '5-haste-' + String(i + 1).padStart(2, '0') + '.jpg', blob: b });
+        });
+      });
+    });
+    return lista;
+  }
+
+  function agoraBR(t) {
+    var d = t ? new Date(t) : new Date();
+    var z = function (x) { return String(x).padStart(2, '0'); };
+    return z(d.getDate()) + '/' + z(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + z(d.getHours()) + ':' + z(d.getMinutes());
+  }
+
+  // ----- fila no IndexedDB -----
+  var filaCache = [];
+
+  function lerFila() {
+    return new Promise(function (res) {
+      if (!db) return res([]);
+      try {
+        var req = db.transaction('fila', 'readonly').objectStore('fila').getAll();
+        req.onsuccess = function () { res(req.result || []); };
+        req.onerror = function () { res([]); };
+      } catch (e) { res([]); }
+    });
+  }
+
+  function gravarItem(item) {
+    var i = filaCache.findIndex(function (x) { return x.id === item.id; });
+    if (i > -1) filaCache[i] = item; else filaCache.push(item);
+    return new Promise(function (res, rej) {
+      var tx = db.transaction('fila', 'readwrite');
+      tx.objectStore('fila').put(item);
+      tx.oncomplete = res;
+      tx.onerror = tx.onabort = function () { rej(tx.error || new Error('erro ao gravar no aparelho')); };
+    });
+  }
+
+  function lerFotoFila(chave) {
+    return new Promise(function (res, rej) {
+      var req = db.transaction('filaFotos', 'readonly').objectStore('filaFotos').get(chave);
+      req.onsuccess = function () { res(req.result || null); };
+      req.onerror = function () { rej(req.error); };
+    });
+  }
+
+  // apagarItem = true remove o registro da fila; false remove só as fotos (já enviadas)
+  function apagarDaFila(item, apagarItem) {
+    if (apagarItem) filaCache = filaCache.filter(function (x) { return x.id !== item.id; });
+    return new Promise(function (res) {
+      try {
+        var tx = db.transaction(['fila', 'filaFotos'], 'readwrite');
+        item.nomes.forEach(function (n) { tx.objectStore('filaFotos').delete(item.id + '|' + n); });
+        if (apagarItem) tx.objectStore('fila').delete(item.id);
+        tx.oncomplete = res; tx.onerror = tx.onabort = function () { res(); };
+      } catch (e) { res(); }
+    });
+  }
+
+  async function colocarNaFila(d) {
+    if (!db) throw new Error('armazenamento do aparelho indisponível');
+    var lista = montarLista();
+    var id = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+    var guardadas = [];
+    for (var x of lista) guardadas.push(await paraGuardar(x.blob));
+    d.registradoEm = agoraBR();
+    var item = {
+      id: id, criadoEm: Date.now(), dados: d,
+      nomes: lista.map(function (x) { return x.nome; }),
+      postes: postesComFotos(),
+      enviadas: [], pastaId: null, status: 'pendente', erro: null, tentativas: 0
+    };
+    await new Promise(function (res, rej) {
+      var tx = db.transaction(['fila', 'filaFotos'], 'readwrite');
+      tx.objectStore('fila').put(item);
+      lista.forEach(function (x, i) { tx.objectStore('filaFotos').put(guardadas[i], id + '|' + x.nome); });
+      tx.oncomplete = res;
+      tx.onerror = tx.onabort = function () { rej(tx.error || new Error('memória do aparelho cheia?')); };
+    });
+    filaCache.push(item);
+    return item;
+  }
+
+  // ----- envio da fila -----
+  var processando = false;
+
+  function processarFila() {
+    if (processando || !db) return Promise.resolve();
+    if (!navigator.onLine) { renderFila(); return Promise.resolve(); }
+    if (navigator.locks && navigator.locks.request) {
+      // evita duas abas do app enviando a mesma obra ao mesmo tempo
+      return navigator.locks.request('registro-fila', { ifAvailable: true }, function (lock) {
+        return lock ? processarFilaAgora() : null;
+      }).catch(function () {});
+    }
+    return processarFilaAgora();
+  }
+
+  async function processarFilaAgora() {
+    processando = true;
+    try {
+      var itens = filaCache.filter(function (i) { return i.status !== 'enviado'; })
+        .sort(function (a, b) { return a.criadoEm - b.criadoEm; });
+      for (var item of itens) {
+        if (!navigator.onLine) break;
+        var ok = await enviarItem(item);
+        if (!ok) break; // falhou: tenta de novo daqui a pouco (ou quando o sinal voltar)
+      }
+    } finally {
+      processando = false;
+      renderFila();
+    }
+  }
+
+  async function enviarItem(item) {
+    item.status = 'enviando'; item.erro = null;
+    await gravarItem(item); renderFila();
+    try {
+      if (!item.pastaId) {
+        item.pastaId = await comRetentativa(function () { return chamar('iniciarRegistro', item.dados, item.id); });
+        await gravarItem(item);
+      }
+      for (let nome of item.nomes) {
+        if (item.enviadas.indexOf(nome) > -1) continue;
+        var g = await lerFotoFila(item.id + '|' + nome);
+        if (!g) throw new Error('foto não encontrada no aparelho: ' + nome);
+        let b64 = await blobBase64(new Blob([g.dados], { type: g.tipo || 'image/jpeg' }));
+        await comRetentativa(function () { return chamar('salvarFoto', item.pastaId, nome, b64); });
+        item.enviadas.push(nome);
+        await gravarItem(item); renderFila();
+      }
+      var r = await comRetentativa(function () {
+        return chamar('finalizarRegistro', item.pastaId, item.dados, item.nomes, item.id);
+      });
+      item.status = 'enviado';
+      item.enviadoEm = Date.now();
+      item.anexadas = !(r && r.anexadas === false);
+      await gravarItem(item);
+      await apagarDaFila(item, false); // libera o espaço das fotos
+      mensagem('✅ Obra ' + item.dados.numeroObra + ' enviada para o e-mail do setor' +
+        (item.anexadas ? '.' : ' (com o link da pasta, fotos grandes demais para anexo).'), 'sucesso');
+      return true;
+    } catch (e) {
+      item.status = 'erro';
+      item.erro = (e && e.message) || String(e);
+      item.tentativas = (item.tentativas || 0) + 1;
+      try { await gravarItem(item); } catch (e2) {}
+      return false;
+    }
+  }
+
+  // Mantém só os enviados dos últimos 3 dias (no máximo 10) na lista
+  async function limparEnviadosAntigos() {
+    var enviados = filaCache.filter(function (i) { return i.status === 'enviado'; })
+      .sort(function (a, b) { return b.enviadoEm - a.enviadoEm; });
+    for (var k = 0; k < enviados.length; k++) {
+      if (k >= 10 || Date.now() - enviados[k].enviadoEm > 3 * 864e5) await apagarDaFila(enviados[k], true);
+    }
+  }
+
+  var confirmarRemoverFila = null, timerRemoverFila = null;
+  function renderFila() {
+    var itens = filaCache.slice().sort(function (a, b) { return a.criadoEm - b.criadoEm; });
+    var pend = itens.filter(function (i) { return i.status !== 'enviado'; }).length;
+    $('fila').classList.toggle('mostrar', itens.length > 0);
+    $('btnTentarFila').style.display = pend && !processando ? '' : 'none';
+    $('listaFila').innerHTML = itens.map(function (i) {
+      var total = i.nomes.length, feitas = i.enviadas.length;
+      var rotulo = {
+        pendente: navigator.onLine ? '⏳ Na fila' : '📵 Aguardando sinal',
+        enviando: '📤 Enviando ' + feitas + '/' + total,
+        erro: navigator.onLine ? '⚠️ Vai tentar de novo' : '📵 Aguardando sinal',
+        enviado: '✅ Enviado ' + agoraBR(i.enviadoEm).slice(0, 16)
+      }[i.status] || i.status;
+      var h = '<div class="item-fila ' + i.status + '"><div class="linha1"><span>Obra ' + esc(i.dados.numeroObra) +
+        ' · ' + dataBR(i.dados.dataObra) + '</span><span>' + rotulo + '</span></div>' +
+        '<div class="linha2">' + esc(i.dados.equipe) + ' · ' + total + ' foto(s) · ' +
+        i.postes.map(function (n) { return 'P' + n; }).join(', ') + '</div>';
+      if (i.status === 'erro' && i.erro) h += '<div class="linha2" style="color:#c62828">Último erro: ' + esc(i.erro) + '</div>';
+      if (i.status !== 'enviado' && (feitas || i.status === 'enviando')) {
+        h += '<div class="mini"><div style="width:' + Math.round(feitas / (total + 1) * 100) + '%"></div></div>';
+      }
+      if (i.status === 'pendente' || i.status === 'erro') {
+        h += confirmarRemoverFila === i.id
+          ? '<button class="confirmar" data-acao="remover-fila" data-id="' + i.id + '">⚠️ Toque de novo: apagar esta obra e as fotos</button>'
+          : '<button data-acao="remover-fila" data-id="' + i.id + '">🗑️ Remover da fila</button>';
+      }
+      return h + '</div>';
+    }).join('');
+  }
+
+  async function removerDaFila(id) {
+    if (processando) { mensagem('Aguarde o envio em andamento terminar.', 'info'); return; }
+    clearTimeout(timerRemoverFila);
+    if (confirmarRemoverFila !== id) {
+      confirmarRemoverFila = id;
+      renderFila();
+      timerRemoverFila = setTimeout(function () { confirmarRemoverFila = null; renderFila(); }, 4000);
+      return;
+    }
+    confirmarRemoverFila = null;
+    var item = filaCache.find(function (x) { return x.id === id; });
+    if (item) await apagarDaFila(item, true);
+    renderFila();
+    mensagem('Obra removida da fila.', 'sucesso');
+  }
+
+  async function enviar() {
+    if (estado.enviando) return;
+    estado.tentouEnviar = true;
+    atualizarTela();
+    var d = dados();
+    if (!d.equipe || !d.numeroObra || !d.dataObra) {
+      mensagem('Preencha equipe, nº da obra e data.', 'erro');
+      $(!d.equipe ? 'equipe' : !d.numeroObra ? 'numeroObra' : 'dataObra').focus();
+      return;
+    }
+    if (!postesComFotos().length) {
+      mensagem('Tire as fotos de pelo menos um poste.', 'erro');
+      return;
+    }
+    var incompletos = postesIncompletos();
+    if (incompletos.length) {
+      var n = incompletos[0];
+      var falta = oQueFalta(n);
+      mensagem('Poste P' + n + ': faltam fotos do ' + falta.periodo.toUpperCase() + ' (' + falta.itens.join(', ') + ').' +
+        (incompletos.length > 1 ? ' Também incompletos: ' + incompletos.slice(1).map(function (x) { return 'P' + x; }).join(', ') + '.' : ''), 'erro', true);
+      estado.poste = n;
+      renderPostes();
+      trocarVista(falta.periodo);
+      return;
+    }
+
+    estado.enviando = true;
+    atualizarTela();
+    $('btnEnviar').textContent = '⏳ Guardando no aparelho...';
+    $('mensagem').className = 'mensagem';
+    try {
+      clearTimeout(timerSalvar);
+      var item = await colocarNaFila(d);
+      var postesTxt = item.postes.map(function (x) { return 'P' + x; }).join(', ');
+      limparTudo(true); // obra já está na fila: formulário livre para a próxima
+      $('formulario').style.display = 'none';
+      $('tituloConcluido').textContent = 'Registro salvo!';
+      $('textoConcluido').textContent = 'Obra ' + d.numeroObra + ': ' + item.nomes.length + ' foto(s) de ' + item.postes.length +
+        ' poste(s) (' + postesTxt + ') guardadas no aparelho. ' +
+        (navigator.onLine
+          ? 'O envio para o e-mail do setor já começou: acompanhe na "Fila de envio" acima.'
+          : 'Sem internet agora: o envio começa sozinho quando o sinal voltar (deixe o app aberto um pouco quando tiver sinal).');
+      $('concluido').classList.add('mostrar');
+      window.scrollTo(0, 0);
+      renderFila();
+    } catch (e) {
+      mensagem('❌ Não foi possível guardar no aparelho (' + ((e && e.message) || e) + '). O rascunho continua salvo.', 'erro', true);
+    } finally {
+      estado.enviando = false;
+      atualizarTela();
+    }
+    processarFila();
+  }
+
+  // Simulação usada só quando API_URL não foi configurada (para testar a tela).
+  var simulado = {
+    iniciarRegistro: function () { return new Promise(function (r) { setTimeout(function () { r('PASTA-TESTE'); }, 300); }); },
+    salvarFoto: function (id, nome) { console.log('[teste] foto', nome); return new Promise(function (r) { setTimeout(function () { r('ok'); }, 150); }); },
+    finalizarRegistro: function (id, d, nomes) {
+      console.log('[teste] e-mail', JSON.stringify(d), nomes.length);
+      return new Promise(function (r) { setTimeout(function () { r({ anexadas: true, total: nomes.length }); }, 300); });
+    }
+  };
+
+  // ===================== PWA (instalar / atualizar / offline) =====================
+  var eventoInstalar = null, querAtualizar = false;
+  function configurarPWA() {
+    if (NO_APPS_SCRIPT) return; // link antigo: sem instalar/offline
+    var instalado = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+    var ios = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    var dispensado = false;
+    try { dispensado = localStorage.getItem('instalarDispensado') === '1'; } catch (e) {}
+    var esconder = function () { $('faixaInstalar').classList.remove('mostrar'); };
+    $('btnFecharInstalar').onclick = function () {
+      esconder();
+      try { localStorage.setItem('instalarDispensado', '1'); } catch (e) {}
+    };
+    if (!instalado && !dispensado) {
+      if (ios) {
+        $('textoInstalar').innerHTML = '📲 Para instalar no iPhone: abra no <b>Safari</b>, toque em <b>Compartilhar</b> (quadrado com seta ⬆️) e em <b>Adicionar à Tela de Início</b>.';
+        $('btnInstalar').style.display = 'none';
+        $('faixaInstalar').classList.add('mostrar');
+      }
+      window.addEventListener('beforeinstallprompt', function (e) {
+        e.preventDefault();
+        eventoInstalar = e;
+        $('faixaInstalar').classList.add('mostrar');
+      });
+    }
+    $('btnInstalar').onclick = function () {
+      if (!eventoInstalar) return;
+      eventoInstalar.prompt();
+      eventoInstalar.userChoice.finally(function () { eventoInstalar = null; esconder(); });
+    };
+    window.addEventListener('appinstalled', esconder);
+
+    // Pede ao celular para não apagar as fotos guardadas quando faltar espaço
+    try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+
+    if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(function (reg) {
+      var avisar = function (w) {
+        if (!w) return;
+        $('faixaAtualizar').classList.add('mostrar');
+        $('btnAtualizar').onclick = function () {
+          if (processando || estado.enviando) { mensagem('Aguarde o envio terminar para atualizar.', 'info'); return; }
+          querAtualizar = true;
+          w.postMessage('ATUALIZAR');
+        };
+      };
+      if (reg.waiting && navigator.serviceWorker.controller) avisar(reg.waiting);
+      reg.addEventListener('updatefound', function () {
+        var w = reg.installing;
+        if (!w) return;
+        w.addEventListener('statechange', function () {
+          if (w.state === 'installed' && navigator.serviceWorker.controller) avisar(w);
+        });
+      });
+      document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'visible') reg.update().catch(function () {});
+      });
+    }).catch(function () {});
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (querAtualizar) { querAtualizar = false; location.reload(); }
+    });
+  }
+
+  // ===================== CÂMERA (Timestamp Camera) =====================
+  // No Android, um link "intent:" abre o app pelo nome do pacote; se não estiver
+  // instalado, abre a página dele na Play Store.
+  function configurarCamera() {
+    var btn = $('btnCamera');
+    if (!/Android/i.test(navigator.userAgent)) {
+      // iPhone/computador: não dá para abrir outro app pelo navegador
+      btn.removeAttribute('href');
+      btn.textContent = '📸 Abra o Timestamp Camera pelo celular';
+      btn.style.background = '#78909c';
+      btn.onclick = function (e) { e.preventDefault(); mensagem('Abra o Timestamp Camera pela tela inicial do celular, tire as fotos e volte aqui.', 'info'); };
+      return;
+    }
+    var loja = 'https://play.google.com/store/apps/details?id=' + CAMERA_PACOTE;
+    btn.href = 'intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=' +
+      CAMERA_PACOTE + ';S.browser_fallback_url=' + encodeURIComponent(loja) + ';end';
+    btn.target = '_top';
+  }
+
+  // ===================== INÍCIO =====================
+  async function iniciar() {
+    if (MODO_TESTE) $('avisoTeste').style.display = '';
+    configurarCamera();
+    configurarPWA();
+    conexao();
+    $('dataObra').value = hojeLocal();
+    try { $('equipe').value = localStorage.getItem('registroEquipe') || ''; } catch (e) {}
+
+    await abrirBanco();
+    var r = await carregarRascunho();
+    if (r) {
+      var d = r.dados || {};
+      $('equipe').value = d.equipe || $('equipe').value;
+      $('numeroObra').value = d.numeroObra || '';
+      $('dataObra').value = d.dataObra || hojeLocal();
+      $('qtdPostes').value = d.qtdPostes || 1;
+      $('obraConcluida').checked = !!d.obraConcluida;
+      $('observacoes').value = d.observacoes || '';
+      var restaurar = function (g, comHastes) {
+        var per = novoPeriodo();
+        SLOTS.forEach(function (s) { per[s.id] = g && g[s.id] ? deGuardado(g[s.id]) : null; });
+        per.hastes = comHastes ? ((g && g.hastes) || []).map(deGuardado) : [];
+        return per;
+      };
+      if (r.versao === 2 && r.postes) {
+        Object.keys(r.postes).forEach(function (k) {
+          estado.fotos[k] = { antes: restaurar(r.postes[k].antes, false), depois: restaurar(r.postes[k].depois, true) };
+        });
+        estado.poste = Math.min(r.poste || 1, qtdPostes());
+      } else if (r.fotos) { // rascunho da versão anterior (sem postes) vira P1
+        estado.fotos[1] = { antes: restaurar(r.fotos.antes, false), depois: restaurar(r.fotos.depois, true) };
+      }
+      if (r.equip) {
+        estado.equip.qtd = r.equip.qtd || 1;
+        estado.equip.sel = Math.min(r.equip.sel || 1, estado.equip.qtd);
+        Object.keys(r.equip.itens || {}).forEach(function (k) {
+          var it = equipItem(parseInt(k, 10));
+          EQUIP.forEach(function (s) { it[s.id] = r.equip.itens[k][s.id] ? deGuardado(r.equip.itens[k][s.id]) : null; });
+        });
+      }
+      if (r.ditais) DITAIS.forEach(function (s) { estado.ditais[s.id] = r.ditais[s.id] ? deGuardado(r.ditais[s.id]) : null; });
+      if (totalGeral() > 0 || d.numeroObra) $('infoRascunho').textContent = '💾 Rascunho anterior recuperado';
+    }
+
+    ligarEventos();
+    renderTudo();
+
+    // Fila de envio: carrega o que ficou guardado e tenta enviar
+    filaCache = await lerFila();
+    filaCache.forEach(function (i) { if (i.status === 'enviando') i.status = 'pendente'; }); // app fechou no meio
+    await limparEnviadosAntigos();
+    renderFila();
+    processarFila();
+    setInterval(processarFila, 60000); // tenta de novo a cada minuto
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible') processarFila();
+    });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar);
+  else iniciar();
+})();
+</script>
+</body>
+</html>
