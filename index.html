@@ -116,6 +116,7 @@
   .visor { position: fixed; inset: 0; z-index: 70; background: rgba(0,0,0,.94); display: none; align-items: center; justify-content: center; }
   .visor.mostrar { display: flex; }
   .visor img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .visor-fechar { position: absolute; top: max(14px, env(safe-area-inset-top)); right: 14px; width: 50px; height: 50px; border-radius: 50%; border: 2px solid #fff; background: rgba(0,0,0,.55); color: #fff; font-size: 24px; cursor: pointer; }
 
   .resumo { background: #f8f9fa; border-radius: 10px; padding: 12px 14px; font-size: 14px; margin-bottom: 15px; }
   .resumo div { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #e3e6ea; }
@@ -282,7 +283,7 @@
     <div class="cam-carimbo" id="camCarimbo"></div>
     <div class="cam-base"><button type="button" id="camDisparo" aria-label="Tirar foto"></button></div>
   </div>
-  <div class="visor" id="visor"><img id="visorImg" alt="Foto"></div>
+  <div class="visor" id="visor"><img id="visorImg" alt="Foto"><button type="button" class="visor-fechar" id="visorFechar" aria-label="Fechar">✕</button></div>
   <div class="equipe-atual" id="equipeAtual" style="display:none"></div>
 
   <div id="formulario">
@@ -752,6 +753,8 @@
     } else {
       linhas.push('UTM: sem sinal de GPS');
     }
+    var eqNome = ($('equipe').value || '').trim();
+    if (eqNome) linhas.unshift(eqNome); // nomenclatura da equipe na primeira linha
     ultimoSemGPS = !pos;
     var fs = Math.max(16, Math.round(Math.min(cw, ch) * 0.04));
     g.font = 'bold ' + fs + 'px Arial, Helvetica, sans-serif';
@@ -783,6 +786,7 @@
     $('camErro').style.display = 'none';
     $('camDisparo').disabled = true;
     $('cam').classList.add('mostrar');
+    try { history.pushState({ tela: 'cam' }, ''); } catch (e) {} // botão voltar fecha a câmera
     atualizarCarimboAoVivo();
     clearInterval(cam.relogio);
     cam.relogio = setInterval(atualizarCarimboAoVivo, 500);
@@ -807,6 +811,7 @@
     cam.stream = null;
     $('camVideo').srcObject = null;
     $('cam').classList.remove('mostrar');
+    if (history.state && history.state.tela === 'cam') history.back();
   }
 
   function atualizarCarimboAoVivo() {
@@ -817,7 +822,8 @@
     var l2;
     if (pos) { var u = paraUTM(pos.coords.latitude, pos.coords.longitude); l2 = 'UTM ' + u.zona + '  ' + u.e + ' E  ' + u.n + ' N'; }
     else l2 = gps.negado ? 'UTM: localização bloqueada' : 'UTM: buscando GPS...';
-    $('camCarimbo').innerHTML = esc(l1) + '<br>' + esc(l2);
+    var eqv = ($('equipe').value || '').trim();
+    $('camCarimbo').innerHTML = (eqv ? esc(eqv) + '<br>' : '') + esc(l1) + '<br>' + esc(l2);
     var g = $('camGps');
     if (pos) {
       var prec = Math.round(pos.coords.accuracy);
@@ -849,7 +855,17 @@
     else mensagem('⚠️ Foto carimbada sem coordenadas: o GPS ainda não tinha sinal.', 'erro');
   }
 
-  function abrirVisor(src) { $('visorImg').src = src; $('visor').classList.add('mostrar'); }
+  // Foto em tela cheia: fecha no ✕, tocando na foto ou no botão voltar do celular
+  function abrirVisor(src) {
+    $('visorImg').src = src;
+    $('visor').classList.add('mostrar');
+    try { history.pushState({ tela: 'visor' }, ''); } catch (e) {}
+  }
+  function fecharVisor() {
+    if (!$('visor').classList.contains('mostrar')) return;
+    $('visor').classList.remove('mostrar');
+    if (history.state && history.state.tela === 'visor') history.back();
+  }
 
   // Dois botões por item: câmera do app (com carimbo) e galeria
   function botoesFoto(at, tem, multiplo) {
@@ -1929,7 +1945,11 @@
     $('camDisparo').onclick = capturar;
     $('camFechar').onclick = fecharCamera;
     $('camAlternativa').parentNode.addEventListener('click', function () { ligarGPS(); setTimeout(fecharCamera, 400); });
-    $('visor').onclick = function () { $('visor').classList.remove('mostrar'); };
+    $('visor').onclick = fecharVisor;
+    window.addEventListener('popstate', function () {
+      $('visor').classList.remove('mostrar');
+      if ($('cam').classList.contains('mostrar')) fecharCamera();
+    });
     document.addEventListener('visibilitychange', function () { if (document.hidden && cam.stream) fecharCamera(); });
     $('codigoEquipe').addEventListener('keydown', function (e) { if (e.key === 'Enter') entrar(); });
     $('btnCancelarLogin').onclick = function () { $('telaLogin').classList.remove('mostrar'); };
