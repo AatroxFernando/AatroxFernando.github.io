@@ -96,9 +96,10 @@
   .btn-foto.camera:active { background: #1b5e20; }
   button.btn-foto { border: 0; font-family: inherit; width: 100%; }
   /* ----- Câmera ao vivo (igual Timestamp Camera) ----- */
-  .cam { position: fixed; inset: 0; z-index: 60; background: #000; display: none; }
+  .cam { position: fixed; inset: 0; z-index: 60; background: #000; display: none; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; }
+  .cam-zoom { position: absolute; left: 22px; bottom: calc(max(24px, env(safe-area-inset-bottom)) + 19px); min-width: 62px; height: 44px; padding: 0 10px; border-radius: 22px; border: 2px solid #fff; background: rgba(0,0,0,.55); color: #fff; font-size: 16px; font-weight: 700; cursor: pointer; }
   .cam.mostrar { display: block; }
-  .cam video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+  .cam video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; transform-origin: center center; }
   .cam-topo { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 10px; padding: max(12px, env(safe-area-inset-top)) 14px 12px; background: linear-gradient(rgba(0,0,0,.75), transparent); color: #fff; font-weight: 700; font-size: 15px; }
   .cam-topo span { flex: 1; }
   .cam-topo button { border: 0; background: rgba(255,255,255,.25); color: #fff; width: 42px; height: 42px; border-radius: 50%; font-size: 20px; cursor: pointer; }
@@ -282,6 +283,7 @@
     <div class="cam-gps sem" id="camGps"></div>
     <div class="cam-carimbo" id="camCarimbo"></div>
     <div class="cam-base"><button type="button" id="camDisparo" aria-label="Tirar foto"></button></div>
+    <button type="button" class="cam-zoom" id="camZoom" aria-label="Zoom">1x</button>
   </div>
   <div class="visor" id="visor"><img id="visorImg" alt="Foto"><button type="button" class="visor-fechar" id="visorFechar" aria-label="Fechar">✕</button></div>
   <div class="equipe-atual" id="equipeAtual" style="display:none"></div>
@@ -793,6 +795,8 @@
     $('camErro').style.display = 'none';
     $('camDisparo').disabled = true;
     $('cam').classList.add('mostrar');
+    travarZoomDaPagina(true); // pinça dá zoom só na câmera, sem mover carimbo e botão
+    zoom.nivel = 1; zoom.hw = null; aplicarZoom();
     try { history.pushState({ tela: 'cam' }, ''); } catch (e) {} // botão voltar fecha a câmera
     atualizarCarimboAoVivo();
     clearInterval(cam.relogio);
@@ -806,14 +810,59 @@
       var v = $('camVideo');
       v.srcObject = s;
       try { await v.play(); } catch (e) {}
+      prepararZoom();
       $('camDisparo').disabled = false;
     } catch (e) {
       $('camErro').style.display = 'flex';
     }
   }
 
+  // ----- Zoom da câmera: pinça com dois dedos ou botão 1x/2x/4x -----
+  // Usa o zoom da própria câmera quando o celular permite; senão amplia a imagem e recorta a foto.
+  var zoom = { nivel: 1, max: 4, hw: null, dist0: 0, nivel0: 1, quadro: 0 };
+  var viewportOriginal = null;
+  function travarZoomDaPagina(travar) {
+    var vp = document.querySelector('meta[name=viewport]');
+    if (!vp) return;
+    if (viewportOriginal === null) viewportOriginal = vp.getAttribute('content');
+    vp.setAttribute('content', travar ? viewportOriginal + ', maximum-scale=1.0, user-scalable=no' : viewportOriginal);
+  }
+  function prepararZoom() {
+    zoom.nivel = 1; zoom.hw = null; zoom.max = 4;
+    try {
+      var t = cam.stream.getVideoTracks()[0];
+      var c = t.getCapabilities ? t.getCapabilities() : {};
+      if (c.zoom && c.zoom.max > c.zoom.min) {
+        zoom.hw = { t: t, min: c.zoom.min || 1, max: c.zoom.max };
+        zoom.max = Math.max(1, Math.min(8, zoom.hw.max / zoom.hw.min));
+      }
+    } catch (e) {}
+    aplicarZoom();
+  }
+  function aplicarZoom() {
+    zoom.quadro = 0;
+    var z = zoom.nivel;
+    if (zoom.hw) {
+      zoom.hw.t.applyConstraints({ advanced: [{ zoom: Math.min(zoom.hw.max, zoom.hw.min * z) }] }).catch(function () {});
+      $('camVideo').style.transform = '';
+    } else {
+      $('camVideo').style.transform = z > 1.01 ? 'scale(' + z + ')' : '';
+    }
+    $('camZoom').textContent = (Math.round(z * 10) / 10).toString().replace('.', ',') + 'x';
+  }
+  function agendarZoom() { if (!zoom.quadro) zoom.quadro = requestAnimationFrame(aplicarZoom); }
+  function distanciaToques(ts) { return Math.hypot(ts[0].clientX - ts[1].clientX, ts[0].clientY - ts[1].clientY); }
+  function trocarZoomBotao() {
+    var passos = [1, 2, 4].filter(function (x) { return x <= zoom.max + 0.01; });
+    var prox = passos.filter(function (x) { return x > zoom.nivel + 0.05; })[0];
+    zoom.nivel = prox || 1;
+    aplicarZoom();
+  }
+
   function fecharCamera() {
     clearInterval(cam.relogio);
+    travarZoomDaPagina(false);
+    zoom.nivel = 1; $('camVideo').style.transform = '';
     if (cam.stream) cam.stream.getTracks().forEach(function (t) { t.stop(); });
     cam.stream = null;
     $('camVideo').srcObject = null;
@@ -847,8 +896,10 @@
     if (!cam.stream || !v.videoWidth) return;
     var pos = posFresca(), a = cam.alvo;
     var cv = document.createElement('canvas');
-    cv.width = v.videoWidth; cv.height = v.videoHeight;
-    cv.getContext('2d').drawImage(v, 0, 0);
+    var zd = zoom.hw ? 1 : zoom.nivel; // zoom ampliado na tela: recorta o centro, igual ao que aparece
+    var sw = Math.round(v.videoWidth / zd), sh = Math.round(v.videoHeight / zd);
+    cv.width = sw; cv.height = sh;
+    cv.getContext('2d').drawImage(v, Math.round((v.videoWidth - sw) / 2), Math.round((v.videoHeight - sh) / 2), sw, sh, 0, 0, sw, sh);
     $('camDisparo').disabled = true;
     var bruto = await new Promise(function (r) { cv.toBlob(r, 'image/jpeg', 0.95); });
     fecharCamera();
@@ -1971,6 +2022,20 @@
     $('btnEntrar').onclick = entrar;
     // Câmera ao vivo
     $('camDisparo').onclick = capturar;
+    $('camZoom').onclick = trocarZoomBotao;
+    $('cam').addEventListener('touchstart', function (e) {
+      if (e.touches.length === 2) { zoom.dist0 = distanciaToques(e.touches); zoom.nivel0 = zoom.nivel; }
+    }, { passive: true });
+    $('cam').addEventListener('touchmove', function (e) {
+      if (e.touches.length > 1) e.preventDefault(); // não deixa o celular ampliar a página
+      if (e.touches.length !== 2 || !zoom.dist0) return;
+      zoom.nivel = Math.max(1, Math.min(zoom.max, zoom.nivel0 * distanciaToques(e.touches) / zoom.dist0));
+      agendarZoom();
+    }, { passive: false });
+    $('cam').addEventListener('touchend', function (e) { if (e.touches.length < 2) zoom.dist0 = 0; });
+    ['gesturestart', 'gesturechange'].forEach(function (ev) { // iPhone
+      document.addEventListener(ev, function (e) { if ($('cam').classList.contains('mostrar')) e.preventDefault(); }, { passive: false });
+    });
     $('camFechar').onclick = fecharCamera;
     $('camAlternativa').parentNode.addEventListener('click', function () { ligarGPS(); setTimeout(fecharCamera, 400); });
     $('visor').onclick = fecharVisor;
