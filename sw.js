@@ -5,7 +5,7 @@
  * IMPORTANTE: sempre que mudar o index.html (ou outro arquivo), aumente a VERSAO
  * abaixo (v1 -> v2 -> v3...). É isso que faz os celulares baixarem a versão nova.
  */
-var VERSAO = 'v9';
+var VERSAO = 'v10';
 var CACHE = 'registro-obras-' + VERSAO;
 var ARQUIVOS = [
   './',

@@ -37,13 +37,29 @@
   .grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
   .campo { display: flex; flex-direction: column; }
   .campo label { font-weight: 600; font-size: 14px; color: #495057; margin-bottom: 4px; }
-  .campo input[type=text], .campo input[type=date], .campo textarea {
+  .campo input[type=text], .campo input[type=date], .campo input[type=time], .campo textarea {
     padding: 10px; border: 2px solid #dee2e6; border-radius: 8px; font-size: 16px; font-family: inherit; background: #fff;
   }
   .campo textarea { resize: vertical; min-height: 60px; }
   .campo input:focus, .campo textarea:focus { outline: none; border-color: #667eea; }
   .campo .erro { border-color: #ff4444 !important; background: #fff5f5 !important; }
   .campo.largo { grid-column: 1 / -1; }
+  /* ----- Dados do serviço ----- */
+  details.secao > summary { font-size: 16px; font-weight: 700; color: #495057; cursor: pointer; list-style: none; }
+  details.secao > summary::-webkit-details-marker { display: none; }
+  details.secao > summary::after { content: ' ▾'; color: #868e96; }
+  details.secao:not([open]) > summary::after { content: ' ▸'; }
+  details.secao[open] > summary { margin-bottom: 12px; }
+  .grade-srv { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .grade-srv .campo input { min-width: 0; width: 100%; }
+  #srv_placa { text-transform: uppercase; }
+  .pessoa { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: #fff; border: 1px solid #dee2e6; border-radius: 10px; padding: 10px; margin-top: 8px; position: relative; }
+  .pessoa .nome { grid-column: 1 / -1; }
+  .pessoa input { padding: 9px; border: 2px solid #dee2e6; border-radius: 8px; font-size: 15px; font-family: inherit; min-width: 0; width: 100%; }
+  .pessoa input:focus { outline: none; border-color: #667eea; }
+  .pessoa .titulo { grid-column: 1 / -1; font-size: 13px; font-weight: 700; color: #495057; }
+  .pessoa .ele-remover { position: absolute; top: 6px; right: 6px; border: 0; background: #ffebee; color: #c62828; width: 28px; height: 28px; border-radius: 50%; font-size: 16px; cursor: pointer; }
+  .btn-mais-ele { margin-top: 8px; width: 100%; padding: 10px; border: 2px dashed #9fa8da; background: #fff; color: #3949ab; border-radius: 10px; font-weight: 700; font-size: 14px; cursor: pointer; }
   .check { display: flex; align-items: center; gap: 8px; padding: 10px 0; font-size: 15px; }
   .check input { width: 22px; height: 22px; }
 
@@ -297,7 +313,7 @@
           <input type="text" id="equipe" placeholder="Equipe / encarregado" autocomplete="off">
         </div>
         <div class="campo">
-          <label for="numeroObra">🔢 Nº da Obra *</label>
+          <label for="numeroObra">🔢 Projeto/Ocorrência *</label>
           <input type="text" id="numeroObra" placeholder="Ex: 123456" autocomplete="off">
         </div>
         <div class="campo">
@@ -319,6 +335,20 @@
         </div>
       </div>
     </div>
+
+    <details class="secao" id="secaoServico" open>
+      <summary>📋 Dados do serviço (opcional)</summary>
+      <div class="grade-srv" id="gradeServico"></div>
+      <h3 style="margin-top:14px">👷 Equipe do serviço</h3>
+      <div class="pessoa">
+        <div class="titulo">Encarregado</div>
+        <input type="text" id="srv_encMat" placeholder="Matrícula" inputmode="numeric" autocomplete="off">
+        <input type="text" id="srv_encFun" placeholder="Função" autocomplete="off">
+        <input type="text" id="srv_encNome" class="nome" placeholder="Nome do encarregado" autocomplete="off">
+      </div>
+      <div id="listaEletricistas"></div>
+      <button type="button" class="btn-mais-ele" id="btnMaisEletricista">+ eletricista</button>
+    </details>
 
     <div class="alternar">
       <button class="antes ativo" id="btnAntes">📸 ANTES <span class="contador" id="contAntes">0/4</span><small>(obrigatório)</small></button>
@@ -511,8 +541,81 @@
       qtdPostes: qtdPostes(),
       obraConcluida: $('obraConcluida').checked,
       obraParcial: $('obraParcial').checked,
-      observacoes: $('observacoes').value.trim()
+      observacoes: $('observacoes').value.trim(),
+      servico: dadosServico()
     };
+  }
+
+  // ===================== DADOS DO SERVIÇO (todos opcionais) =====================
+  var CAMPOS_SRV = [
+    ['placa', '🚚 Placa', 'text'], ['municipio', '📍 Município', 'text'],
+    ['saidaCanteiro', '🕐 Saída canteiro', 'time'], ['chegadaCanteiro', '🕐 Chegada canteiro', 'time'],
+    ['inicioServico', '▶️ Início serviço', 'time'], ['terminoServico', '⏹️ Término serviço', 'time'],
+    ['inicioAlmoco', '🍽️ Início almoço', 'time'], ['terminoAlmoco', '🍽️ Término almoço', 'time'],
+    ['origemAtividade', 'Origem atividade', 'text'], ['processo', 'Processo', 'text'],
+    ['atividade', 'Atividade', 'text'], ['statusProjeto', 'Status projeto', 'text'],
+    ['alimentador', 'Alimentador', 'text'], ['prefixo', 'Prefixo', 'text'],
+    ['reajuste', 'Reajuste', 'text'], ['na', 'NA', 'text'],
+    ['supervisor', '🧑‍💼 Supervisor', 'text']
+  ];
+  var MAX_ELETRICISTAS = 8;
+  function valorDe(id) { var el = $(id); return el ? String(el.value || '').trim() : ''; }
+  function montarCamposServico() {
+    $('gradeServico').innerHTML = CAMPOS_SRV.map(function (c, i) {
+      var largo = i === CAMPOS_SRV.length - 1 && CAMPOS_SRV.length % 2 ? ' largo' : '';
+      return '<div class="campo' + largo + '"><label for="srv_' + c[0] + '">' + c[1] + '</label>' +
+        '<input type="' + c[2] + '" id="srv_' + c[0] + '" autocomplete="off"></div>';
+    }).join('');
+  }
+  function renderEletricistas(lista) {
+    lista = (lista && lista.length) ? lista : [{}];
+    $('listaEletricistas').innerHTML = lista.map(function (e, i) {
+      return '<div class="pessoa ele"><div class="titulo">Eletricista ' + (i + 1) + '</div>' +
+        (lista.length > 1 ? '<button type="button" class="ele-remover" data-ele-remover="' + i + '" aria-label="Remover">×</button>' : '') +
+        '<input type="text" class="ele-mat" placeholder="Matrícula" inputmode="numeric" autocomplete="off" value="' + esc(e.matricula || '') + '">' +
+        '<input type="text" class="ele-fun" placeholder="Função" autocomplete="off" value="' + esc(e.funcao || '') + '">' +
+        '<input type="text" class="ele-nome nome" placeholder="Nome do eletricista" autocomplete="off" value="' + esc(e.nome || '') + '"></div>';
+    }).join('');
+    $('btnMaisEletricista').style.display = lista.length >= MAX_ELETRICISTAS ? 'none' : '';
+  }
+  function lerEletricistas(manterVazios) {
+    return Array.prototype.map.call(document.querySelectorAll('#listaEletricistas .ele'), function (r) {
+      return { matricula: r.querySelector('.ele-mat').value.trim(), funcao: r.querySelector('.ele-fun').value.trim(), nome: r.querySelector('.ele-nome').value.trim() };
+    }).filter(function (e) { return manterVazios || e.matricula || e.funcao || e.nome; });
+  }
+  function dadosServico() {
+    var s = {};
+    CAMPOS_SRV.forEach(function (c) { s[c[0]] = valorDe('srv_' + c[0]); });
+    s.placa = s.placa.toUpperCase();
+    s.encarregado = { matricula: valorDe('srv_encMat'), funcao: valorDe('srv_encFun'), nome: valorDe('srv_encNome') };
+    s.eletricistas = lerEletricistas(false);
+    return s;
+  }
+  function preencherServico(s) {
+    s = s || {};
+    CAMPOS_SRV.forEach(function (c) { $('srv_' + c[0]).value = s[c[0]] || ''; });
+    var enc = s.encarregado || {};
+    $('srv_encMat').value = enc.matricula || ''; $('srv_encFun').value = enc.funcao || ''; $('srv_encNome').value = enc.nome || '';
+    renderEletricistas(s.eletricistas);
+  }
+  function ligarServico() {
+    montarCamposServico();
+    renderEletricistas([{}]);
+    $('secaoServico').addEventListener('input', houveMudanca);
+    $('secaoServico').addEventListener('change', houveMudanca);
+    $('btnMaisEletricista').onclick = function () {
+      var l = lerEletricistas(true);
+      if (l.length >= MAX_ELETRICISTAS) return;
+      l.push({}); renderEletricistas(l);
+      var nomes = document.querySelectorAll('#listaEletricistas .ele-mat'); nomes[nomes.length - 1].focus();
+      houveMudanca();
+    };
+    $('listaEletricistas').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-ele-remover]');
+      if (!b) return;
+      var l = lerEletricistas(true); l.splice(parseInt(b.dataset.eleRemover, 10), 1);
+      renderEletricistas(l); houveMudanca();
+    });
   }
 
   // Cada item guarda uma LISTA de fotos (pode ter mais de 1; o obrigatório é ter pelo menos 1)
@@ -1421,6 +1524,9 @@
     ['equipe', 'numeroObra', 'observacoes'].forEach(function (id) { $(id).value = ''; });
     if (manterEquipe) $('equipe').value = equipe;
     aplicarEquipe();
+    // Placa, supervisor e pessoas costumam ser os mesmos no dia: ficam preenchidos
+    var srvAntes = dadosServico();
+    preencherServico({ placa: srvAntes.placa, supervisor: srvAntes.supervisor, encarregado: srvAntes.encarregado, eletricistas: srvAntes.eletricistas });
     $('dataObra').value = hojeLocal();
     $('qtdPostes').value = 1;
     $('obraConcluida').checked = false;
@@ -1978,6 +2084,7 @@
     $('dataObra').value = hojeLocal();
     try { $('equipe').value = localStorage.getItem('registroEquipe') || ''; } catch (e) {}
 
+    ligarServico(); // monta a seção Dados do serviço antes de recuperar o rascunho
     await abrirBanco();
     var r = await carregarRascunho();
     if (r) {
@@ -1988,6 +2095,7 @@
       $('qtdPostes').value = d.qtdPostes || 1;
       $('obraConcluida').checked = !!d.obraConcluida;
       $('obraParcial').checked = !!d.obraParcial;
+      if (d.servico) preencherServico(d.servico);
       $('observacoes').value = d.observacoes || '';
       var restaurar = function (g, comHastes) {
         var per = novoPeriodo();
