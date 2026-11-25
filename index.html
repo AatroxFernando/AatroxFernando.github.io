@@ -60,6 +60,22 @@
   .pessoa input.achou { border-color: #2f9e44; background: #ebfbee; }
   .pessoa .titulo { grid-column: 1 / -1; font-size: 13px; font-weight: 700; color: #495057; }
   .pessoa .ele-remover { position: absolute; top: 6px; right: 6px; border: 0; background: #ffebee; color: #c62828; width: 28px; height: 28px; border-radius: 50%; font-size: 16px; cursor: pointer; }
+  .card-mo { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; background: #fff; border: 2px solid #c5cae9; border-radius: 12px; padding: 14px; margin-bottom: 18px; cursor: pointer; font-family: inherit; }
+  .card-mo .ic { font-size: 26px; }
+  .card-mo .txt { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+  .card-mo b { font-size: 16px; color: #3949ab; }
+  .card-mo small { font-size: 13px; color: #6c757d; }
+  .card-mo small.alerta { color: #c62828; font-weight: 600; }
+  .card-mo .seta { font-size: 28px; color: #9fa8da; }
+  .tela-mo { position: fixed; inset: 0; z-index: 45; background: #f1f3f5; display: none; flex-direction: column; }
+  .tela-mo.mostrar { display: flex; }
+  .topo-mo { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; }
+  .topo-mo h2 { font-size: 17px; margin: 0; }
+  .topo-mo button { border: 0; background: rgba(255,255,255,.2); color: #fff; font-size: 15px; font-weight: 700; padding: 8px 12px; border-radius: 8px; cursor: pointer; }
+  .corpo-mo { flex: 1; overflow-y: auto; padding: 12px 14px 20px; max-width: 600px; width: 100%; margin: 0 auto; }
+  .rodape-mo { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: #fff; border-top: 1px solid #dee2e6; }
+  .rodape-mo .mo-total { flex: 1; margin: 0; text-align: left; }
+  .rodape-mo button { border: 0; background: #2e7d32; color: #fff; font-size: 16px; font-weight: 700; padding: 12px 22px; border-radius: 10px; cursor: pointer; }
   .mo-aviso { font-size: 12px; color: #868e96; margin-bottom: 4px; }
   .mo-aviso.ruim { color: #c62828; font-weight: 600; }
   .mo-item { background: #fff; border: 1px solid #dee2e6; border-radius: 10px; padding: 10px; margin-top: 8px; position: relative; }
@@ -371,13 +387,20 @@
       <button type="button" class="btn-mais-ele" id="btnMaisEletricista">+ eletricista</button>
     </details>
 
-    <details class="secao" id="secaoMO" open>
-      <summary>🔧 Chamada Mão de Obra (opcional)</summary>
-      <div class="mo-aviso" id="avisoMO"></div>
-      <div id="listaMO"></div>
-      <button type="button" class="btn-mais-ele" id="btnMaisMO">+ serviço</button>
-      <div class="mo-total" id="totalMO"></div>
-    </details>
+    <button type="button" class="card-mo" id="abrirMO">
+      <span class="ic">🔧</span>
+      <span class="txt"><b>Chamada Mão de Obra</b><small id="resumoMO">Nenhum serviço lançado · toque para lançar</small></span>
+      <span class="seta">›</span>
+    </button>
+    <div class="tela-mo" id="telaMO">
+      <div class="topo-mo"><button type="button" id="voltarMO">← Voltar</button><h2>🔧 Chamada Mão de Obra</h2></div>
+      <div class="corpo-mo">
+        <div class="mo-aviso" id="avisoMO"></div>
+        <div id="listaMO"></div>
+        <button type="button" class="btn-mais-ele" id="btnMaisMO">+ serviço</button>
+      </div>
+      <div class="rodape-mo"><div class="mo-total" id="totalMO"></div><button type="button" id="prontoMO">✓ Pronto</button></div>
+    </div>
 
     <div class="alternar">
       <button class="antes ativo" id="btnAntes">📸 ANTES <span class="contador" id="contAntes">0/4</span><small>(obrigatório)</small></button>
@@ -723,7 +746,28 @@
       } else { info.className = 'mo-info'; info.textContent = ''; }
       el.classList.toggle('ok', !!r && !!el.dataset.tipo && q > 0);
     });
-    $('totalMO').textContent = total ? 'Total: ' + fmtNum(total, 2) + ' US' : '';
+    $('totalMO').textContent = 'Total: ' + fmtNum(total, 2) + ' US';
+    var linhas = lerMO(false), prontas = document.querySelectorAll('#listaMO .mo-item.ok').length, r = $('resumoMO');
+    if (!linhas.length) { r.className = ''; r.textContent = 'Nenhum serviço lançado · toque para lançar'; }
+    else {
+      var inc = linhas.length - prontas;
+      r.className = inc ? 'alerta' : '';
+      r.textContent = linhas.length + (linhas.length > 1 ? ' serviços' : ' serviço') + ' · ' + fmtNum(total, 2) + ' US' +
+        (inc ? ' · ⚠️ ' + inc + (inc > 1 ? ' incompletos' : ' incompleto') : '');
+    }
+  }
+  // Tela própria da Mão de Obra (o botão voltar do celular também fecha)
+  function abrirMO() {
+    if ($('telaMO').classList.contains('mostrar')) return;
+    $('telaMO').classList.add('mostrar');
+    document.body.style.overflow = 'hidden';
+    try { history.pushState({ tela: 'mo' }, ''); } catch (e) {}
+  }
+  function fecharMO(semHistorico) {
+    if (!$('telaMO').classList.contains('mostrar')) return;
+    $('telaMO').classList.remove('mostrar');
+    document.body.style.overflow = '';
+    if (!semHistorico && history.state && history.state.tela === 'mo') history.back();
   }
   // Devolve a mensagem do primeiro problema (ou '' se estiver tudo certo)
   function problemaMO() {
@@ -750,6 +794,10 @@
       var b = e.target.closest('[data-mo-remover]');
       if (b) { var l = lerMO(true); l.splice(parseInt(b.dataset.moRemover, 10), 1); renderMO(l); houveMudanca(); }
     });
+    $('abrirMO').onclick = abrirMO;
+    $('voltarMO').onclick = function () { fecharMO(); };
+    $('prontoMO').onclick = function () { fecharMO(); };
+    window.addEventListener('popstate', function () { fecharMO(true); });
     $('btnMaisMO').onclick = function () {
       var l = lerMO(true); l.push({}); renderMO(l);
       var c = document.querySelectorAll('#listaMO .mo-cod'); c[c.length - 1].focus();
@@ -2039,9 +2087,9 @@
     var pMO = problemaMO();
     if (pMO) {
       mensagem('🔧 ' + pMO[1], 'erro', true);
-      $('secaoMO').open = true;
+      abrirMO();
       var alvo = pMO[2] ? pMO[0].querySelector(pMO[2]) : pMO[0];
-      alvo.scrollIntoView({ block: 'center' }); if (pMO[2]) alvo.focus();
+      setTimeout(function () { alvo.scrollIntoView({ block: 'center' }); if (pMO[2]) alvo.focus(); }, 50);
       return;
     }
     if (!postesComFotos().length) {
