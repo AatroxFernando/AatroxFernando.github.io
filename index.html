@@ -57,6 +57,7 @@
   .pessoa .nome { grid-column: 1 / -1; }
   .pessoa input { padding: 9px; border: 2px solid #dee2e6; border-radius: 8px; font-size: 15px; font-family: inherit; min-width: 0; width: 100%; }
   .pessoa input:focus { outline: none; border-color: #667eea; }
+  .pessoa input.achou { border-color: #2f9e44; background: #ebfbee; }
   .pessoa .titulo { grid-column: 1 / -1; font-size: 13px; font-weight: 700; color: #495057; }
   .pessoa .ele-remover { position: absolute; top: 6px; right: 6px; border: 0; background: #ffebee; color: #c62828; width: 28px; height: 28px; border-radius: 50%; font-size: 16px; cursor: pointer; }
   .btn-mais-ele { margin-top: 8px; width: 100%; padding: 10px; border: 2px dashed #9fa8da; background: #fff; color: #3949ab; border-radius: 10px; font-weight: 700; font-size: 14px; cursor: pointer; }
@@ -573,6 +574,7 @@
         '<input type="text" class="ele-nome nome" placeholder="Nome do eletricista" autocomplete="off" value="' + esc(e.nome || '') + '"></div>';
     }).join('');
     $('btnMaisEletricista').style.display = lista.length >= MAX_ELETRICISTAS ? 'none' : '';
+    if (typeof marcarPessoasAchadas === 'function') marcarPessoasAchadas();
   }
   function lerEletricistas(manterVazios) {
     return Array.prototype.map.call(document.querySelectorAll('#listaEletricistas .ele'), function (r) {
@@ -593,10 +595,46 @@
     var enc = s.encarregado || {};
     $('srv_encMat').value = enc.matricula || ''; $('srv_encFun').value = enc.funcao || ''; $('srv_encNome').value = enc.nome || '';
     renderEletricistas(s.eletricistas);
+    marcarPessoasAchadas();
+  }
+  // ----- Cadastro de funcionários: digitou a matrícula, preenche nome e função -----
+  var funcionarios = {};
+  function normMat(m) { return String(m || '').replace(/\D/g, '').replace(/^0+/, ''); }
+  function carregarFuncionariosLocal() {
+    funcionarios = {};
+    try {
+      JSON.parse(lerLS('registroFuncionarios') || '[]').forEach(function (f) {
+        var k = normMat(f[0]); if (k) funcionarios[k] = f;
+      });
+    } catch (e) {}
+  }
+  async function atualizarFuncionarios() {
+    if (NO_APPS_SCRIPT || (!MODO_TESTE && (!codigoSalvo() || !navigator.onLine))) return;
+    try {
+      var l = await chamar('funcionarios');
+      if (Array.isArray(l) && l.length) { gravarLS('registroFuncionarios', JSON.stringify(l)); carregarFuncionariosLocal(); marcarPessoasAchadas(); }
+    } catch (e) { console.warn('funcionarios:', e); }
+  }
+  function buscarPessoa(mat, fun, nome) {
+    var f = funcionarios[normMat(mat.value)];
+    mat.classList.toggle('achou', !!f);
+    if (f) { nome.value = f[1] || ''; fun.value = f[2] || ''; mat.dataset.auto = '1'; }
+    else if (mat.dataset.auto) { nome.value = ''; fun.value = ''; delete mat.dataset.auto; } // apaga o que o app tinha preenchido
+  }
+  function marcarPessoasAchadas() {
+    document.querySelectorAll('#srv_encMat, #listaEletricistas .ele-mat').forEach(function (m) {
+      m.classList.toggle('achou', !!funcionarios[normMat(m.value)]);
+    });
   }
   function ligarServico() {
     montarCamposServico();
     renderEletricistas([{}]);
+    carregarFuncionariosLocal();
+    $('secaoServico').addEventListener('input', function (e) {
+      var t = e.target;
+      if (t.id === 'srv_encMat') buscarPessoa(t, $('srv_encFun'), $('srv_encNome'));
+      else if (t.classList.contains('ele-mat')) { var p = t.closest('.ele'); buscarPessoa(t, p.querySelector('.ele-fun'), p.querySelector('.ele-nome')); }
+    });
     $('secaoServico').addEventListener('input', houveMudanca);
     $('secaoServico').addEventListener('change', houveMudanca);
     $('btnMaisEletricista').onclick = function () {
@@ -1345,6 +1383,7 @@
     else { a.textContent = '📱 Sem internet: pode registrar e tocar em Enviar. As fotos ficam no aparelho e vão sozinhas quando o sinal voltar.'; a.className = 'aviso offline'; }
     if (typeof renderFila === 'function') renderFila();
     if (navigator.onLine && typeof processarFila === 'function') processarFila();
+    if (navigator.onLine && typeof atualizarFuncionarios === 'function') atualizarFuncionarios();
   }
 
   function houveMudanca() {
@@ -1912,6 +1951,7 @@
   // Simulação usada só quando API_URL não foi configurada (para testar a tela).
   var simulado = {
     entrar: function () { return new Promise(function (r) { setTimeout(function () { r({ equipe: 'EQUIPE TESTE' }); }, 300); }); },
+    funcionarios: function () { return Promise.resolve([['1234', 'FULANO DE TAL', 'ELET RO 1'], ['5678', 'CICLANO DA SILVA', 'ENC RO 3']]); },
     iniciarRegistro: function () { return new Promise(function (r) { setTimeout(function () { r('PASTA-TESTE'); }, 300); }); },
     salvarFoto: function (id, nome) { console.log('[teste] foto', nome); return new Promise(function (r) { setTimeout(function () { r('ok'); }, 150); }); },
     finalizarRegistro: function (id, d, nomes) {
@@ -1979,6 +2019,7 @@
       houveMudanca();
       mensagem('✅ Equipe ' + r.equipe + ' conectada.', 'sucesso');
       processarFila();
+      atualizarFuncionarios();
     } catch (e) {
       var msg = (e && e.message) || String(e);
       $('erroLogin').textContent = /código da equipe inválido/.test(msg)
@@ -2152,6 +2193,7 @@
     $('btnCancelarLogin').onclick = function () { $('telaLogin').classList.remove('mostrar'); };
     aplicarEquipe();
     if (precisaCodigo() && !codigoSalvo()) mostrarLogin();
+    atualizarFuncionarios();
 
     // Fila de envio: carrega o que ficou guardado e tenta enviar
     filaCache = await lerFila();
