@@ -60,6 +60,26 @@
   .pessoa input.achou { border-color: #2f9e44; background: #ebfbee; }
   .pessoa .titulo { grid-column: 1 / -1; font-size: 13px; font-weight: 700; color: #495057; }
   .pessoa .ele-remover { position: absolute; top: 6px; right: 6px; border: 0; background: #ffebee; color: #c62828; width: 28px; height: 28px; border-radius: 50%; font-size: 16px; cursor: pointer; }
+  .mo-aviso { font-size: 12px; color: #868e96; margin-bottom: 4px; }
+  .mo-aviso.ruim { color: #c62828; font-weight: 600; }
+  .mo-item { background: #fff; border: 1px solid #dee2e6; border-radius: 10px; padding: 10px; margin-top: 8px; position: relative; }
+  .mo-item.ok { border-color: #a5d6a7; }
+  .mo-item .ele-remover { position: absolute; top: 6px; right: 6px; border: 0; background: #ffebee; color: #c62828; width: 28px; height: 28px; border-radius: 50%; font-size: 16px; cursor: pointer; }
+  .mo-item .titulo { font-size: 13px; font-weight: 700; color: #495057; margin-bottom: 6px; }
+  .mo-linha { display: grid; grid-template-columns: 1fr 100px; gap: 8px; }
+  .mo-item input { padding: 9px; border: 2px solid #dee2e6; border-radius: 8px; font-size: 16px; font-family: inherit; min-width: 0; width: 100%; }
+  .mo-item input:focus { outline: none; border-color: #667eea; }
+  .mo-item input.achou { border-color: #2f9e44; background: #ebfbee; }
+  .mo-item input.errado { border-color: #e53935; background: #ffebee; }
+  .mo-info { font-size: 13px; color: #343a40; margin: 6px 0; min-height: 18px; line-height: 1.35; }
+  .mo-info .us { color: #5c6bc0; font-weight: 700; white-space: nowrap; }
+  .mo-info.ruim { color: #c62828; }
+  .mo-tipo { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .mo-tipo button { padding: 10px; border: 2px solid #dee2e6; background: #fff; border-radius: 8px; font-weight: 700; font-size: 14px; color: #495057; cursor: pointer; }
+  .mo-tipo button.ativo[data-tipo="I"] { background: #2e7d32; border-color: #2e7d32; color: #fff; }
+  .mo-tipo button.ativo[data-tipo="R"] { background: #c62828; border-color: #c62828; color: #fff; }
+  .mo-item.falta .mo-tipo button:not(.ativo) { border-color: #ef9a9a; }
+  .mo-total { margin-top: 10px; font-size: 14px; font-weight: 700; color: #3949ab; text-align: right; }
   .btn-mais-ele { margin-top: 8px; width: 100%; padding: 10px; border: 2px dashed #9fa8da; background: #fff; color: #3949ab; border-radius: 10px; font-weight: 700; font-size: 14px; cursor: pointer; }
   .check { display: flex; align-items: center; gap: 8px; padding: 10px 0; font-size: 15px; }
   .check input { width: 22px; height: 22px; }
@@ -351,6 +371,14 @@
       <button type="button" class="btn-mais-ele" id="btnMaisEletricista">+ eletricista</button>
     </details>
 
+    <details class="secao" id="secaoMO" open>
+      <summary>🔧 Chamada Mão de Obra (opcional)</summary>
+      <div class="mo-aviso" id="avisoMO"></div>
+      <div id="listaMO"></div>
+      <button type="button" class="btn-mais-ele" id="btnMaisMO">+ serviço</button>
+      <div class="mo-total" id="totalMO"></div>
+    </details>
+
     <div class="alternar">
       <button class="antes ativo" id="btnAntes">📸 ANTES <span class="contador" id="contAntes">0/4</span><small>(obrigatório)</small></button>
       <button class="depois" id="btnDepois">📸 DEPOIS <span class="contador" id="contDepois">0/4</span><small>(obrigatório)</small></button>
@@ -543,7 +571,8 @@
       obraConcluida: $('obraConcluida').checked,
       obraParcial: $('obraParcial').checked,
       observacoes: $('observacoes').value.trim(),
-      servico: dadosServico()
+      servico: dadosServico(),
+      maoDeObra: lerMO(false)
     };
   }
 
@@ -610,6 +639,7 @@
   }
   async function atualizarFuncionarios() {
     if (NO_APPS_SCRIPT || (!MODO_TESTE && (!codigoSalvo() || !navigator.onLine))) return;
+    atualizarCodigosMO();
     try {
       var l = await chamar('funcionarios');
       if (Array.isArray(l) && l.length) { gravarLS('registroFuncionarios', JSON.stringify(l)); carregarFuncionariosLocal(); marcarPessoasAchadas(); }
@@ -626,7 +656,108 @@
       m.classList.toggle('achou', !!funcionarios[normMat(m.value)]);
     });
   }
+  // ----- Chamada Mão de Obra: código → descrição e US; Instalado/Retirado; quantidade -----
+  var codigosMO = { tipo: '', mapa: {}, total: 0 };
+  function nomeLinha(t) { return t === 'LV' ? 'Linha Viva' : 'Linha Morta'; }
+  function fmtNum(n, casas) { return (Number(n) || 0).toLocaleString('pt-BR', { maximumFractionDigits: casas }); }
+  function numQtd(v) { var n = parseFloat(String(v || '').replace(/\s/g, '').replace(',', '.')); return isNaN(n) ? 0 : n; }
+  function carregarCodigosLocal() {
+    codigosMO = { tipo: '', mapa: {}, total: 0 };
+    try {
+      var g = JSON.parse(lerLS('registroCodigosMO') || 'null');
+      if (g && g.equipe === nomeEquipeSalvo() && Array.isArray(g.lista)) {
+        codigosMO.tipo = g.tipo;
+        g.lista.forEach(function (r) { var k = normMat(r[0]); if (k) { codigosMO.mapa[k] = r; codigosMO.total++; } });
+      }
+    } catch (e) {}
+    avisoMO();
+  }
+  async function atualizarCodigosMO() {
+    try {
+      var r = await chamar('codigos');
+      if (r && Array.isArray(r.lista) && r.lista.length) {
+        gravarLS('registroCodigosMO', JSON.stringify({ equipe: nomeEquipeSalvo(), tipo: r.tipo, lista: r.lista }));
+        carregarCodigosLocal();
+        atualizarInfoMO();
+      }
+    } catch (e) { console.warn('codigos:', e); }
+  }
+  function avisoMO() {
+    var a = $('avisoMO'); if (!a) return;
+    if (codigosMO.total) { a.className = 'mo-aviso'; a.textContent = 'Códigos de ' + nomeLinha(codigosMO.tipo) + ' (' + codigosMO.total + ' serviços)'; }
+    else { a.className = 'mo-aviso ruim'; a.textContent = '⚠️ Lista de códigos ainda não baixada: abra o app com internet uma vez.'; }
+  }
+  function renderMO(lista) {
+    lista = (lista && lista.length) ? lista : [{}];
+    $('listaMO').innerHTML = lista.map(function (x, i) {
+      return '<div class="mo-item" data-tipo="' + esc(x.tipo || '') + '"><div class="titulo">Serviço ' + (i + 1) + '</div>' +
+        (lista.length > 1 ? '<button type="button" class="ele-remover" data-mo-remover="' + i + '" aria-label="Remover">×</button>' : '') +
+        '<div class="mo-linha"><input type="text" class="mo-cod" placeholder="Código" inputmode="numeric" autocomplete="off" value="' + esc(x.codigo || '') + '">' +
+        '<input type="text" class="mo-qtd" placeholder="Qtd" inputmode="decimal" autocomplete="off" value="' + esc(x.qtd || '') + '"></div>' +
+        '<div class="mo-info"></div>' +
+        '<div class="mo-tipo"><button type="button" data-tipo="I">⬆️ Instalado</button><button type="button" data-tipo="R">⬇️ Retirado</button></div></div>';
+    }).join('');
+    atualizarInfoMO();
+  }
+  function lerMO(manterVazios) {
+    return Array.prototype.map.call(document.querySelectorAll('#listaMO .mo-item'), function (el) {
+      var cod = el.querySelector('.mo-cod').value.trim(), r = codigosMO.mapa[normMat(cod)];
+      return { codigo: cod, tipo: el.dataset.tipo || '', qtd: el.querySelector('.mo-qtd').value.trim(),
+        descricao: r ? r[1] : '', us: r ? r[2] : 0 };
+    }).filter(function (x) { return manterVazios || x.codigo || x.qtd || x.tipo; });
+  }
+  function atualizarInfoMO() {
+    var total = 0;
+    document.querySelectorAll('#listaMO .mo-item').forEach(function (el) {
+      var inp = el.querySelector('.mo-cod'), info = el.querySelector('.mo-info');
+      var cod = normMat(inp.value), r = codigosMO.mapa[cod], q = numQtd(el.querySelector('.mo-qtd').value);
+      el.querySelectorAll('.mo-tipo button').forEach(function (b) { b.classList.toggle('ativo', b.dataset.tipo === el.dataset.tipo); });
+      inp.classList.toggle('achou', !!r);
+      inp.classList.toggle('errado', !!cod && !r && codigosMO.total > 0 && cod.length >= 5);
+      if (r) {
+        total += r[2] * q;
+        info.className = 'mo-info';
+        info.innerHTML = esc(r[1]) + ' · <span class="us">' + fmtNum(r[2], 4) + ' US' + (q ? ' × ' + fmtNum(q, 2) + ' = ' + fmtNum(r[2] * q, 4) + ' US' : '') + '</span>';
+      } else if (cod && codigosMO.total && cod.length >= 5) {
+        info.className = 'mo-info ruim'; info.textContent = 'Código não encontrado na lista de ' + nomeLinha(codigosMO.tipo) + '.';
+      } else { info.className = 'mo-info'; info.textContent = ''; }
+      el.classList.toggle('ok', !!r && !!el.dataset.tipo && q > 0);
+    });
+    $('totalMO').textContent = total ? 'Total: ' + fmtNum(total, 2) + ' US' : '';
+  }
+  // Devolve a mensagem do primeiro problema (ou '' se estiver tudo certo)
+  function problemaMO() {
+    var itens = document.querySelectorAll('#listaMO .mo-item');
+    for (var i = 0; i < itens.length; i++) {
+      var el = itens[i], cod = el.querySelector('.mo-cod').value.trim(), qtd = el.querySelector('.mo-qtd').value.trim();
+      if (!cod && !qtd && !el.dataset.tipo) continue; // linha vazia: ignora
+      var n = 'Mão de obra, serviço ' + (i + 1) + ': ';
+      el.classList.remove('falta');
+      if (!cod) return [el, n + 'digite o código.', '.mo-cod'];
+      if (codigosMO.total && !codigosMO.mapa[normMat(cod)]) return [el, n + 'o código ' + cod + ' não existe na lista de ' + nomeLinha(codigosMO.tipo) + '.', '.mo-cod'];
+      if (!el.dataset.tipo) { el.classList.add('falta'); return [el, n + 'marque Instalado ou Retirado.', null]; }
+      if (!(numQtd(qtd) > 0)) return [el, n + 'coloque a quantidade.', '.mo-qtd'];
+    }
+    return null;
+  }
+  function ligarMO() {
+    carregarCodigosLocal();
+    renderMO([{}]);
+    $('listaMO').addEventListener('input', function () { atualizarInfoMO(); houveMudanca(); });
+    $('listaMO').addEventListener('click', function (e) {
+      var t = e.target.closest('.mo-tipo button');
+      if (t) { var el = t.closest('.mo-item'); el.dataset.tipo = t.dataset.tipo; el.classList.remove('falta'); atualizarInfoMO(); houveMudanca(); return; }
+      var b = e.target.closest('[data-mo-remover]');
+      if (b) { var l = lerMO(true); l.splice(parseInt(b.dataset.moRemover, 10), 1); renderMO(l); houveMudanca(); }
+    });
+    $('btnMaisMO').onclick = function () {
+      var l = lerMO(true); l.push({}); renderMO(l);
+      var c = document.querySelectorAll('#listaMO .mo-cod'); c[c.length - 1].focus();
+      houveMudanca();
+    };
+  }
   function ligarServico() {
+    ligarMO();
     montarCamposServico();
     renderEletricistas([{}]);
     carregarFuncionariosLocal();
@@ -1562,6 +1693,7 @@
     // Placa, supervisor e pessoas costumam ser os mesmos no dia: ficam preenchidos
     var srvAntes = dadosServico();
     preencherServico({ placa: srvAntes.placa, supervisor: srvAntes.supervisor, encarregado: srvAntes.encarregado, eletricistas: srvAntes.eletricistas });
+    renderMO([{}]);
     $('dataObra').value = hojeLocal();
     $('qtdPostes').value = 1;
     $('obraConcluida').checked = false;
@@ -1904,6 +2036,14 @@
       $('observacoes').focus();
       return;
     }
+    var pMO = problemaMO();
+    if (pMO) {
+      mensagem('🔧 ' + pMO[1], 'erro', true);
+      $('secaoMO').open = true;
+      var alvo = pMO[2] ? pMO[0].querySelector(pMO[2]) : pMO[0];
+      alvo.scrollIntoView({ block: 'center' }); if (pMO[2]) alvo.focus();
+      return;
+    }
     if (!postesComFotos().length) {
       mensagem('Tire as fotos de pelo menos um poste.', 'erro');
       return;
@@ -1952,6 +2092,7 @@
   var simulado = {
     entrar: function () { return new Promise(function (r) { setTimeout(function () { r({ equipe: 'EQUIPE TESTE' }); }, 300); }); },
     funcionarios: function () { return Promise.resolve([['1234', 'FULANO DE TAL', 'ELET RO 1'], ['5678', 'CICLANO DA SILVA', 'ENC RO 3']]); },
+    codigos: function () { return Promise.resolve({ tipo: 'LM', lista: [['60003', 'ABERTURA E FECHAMENTO DE VALETA POR M', 0.3329], ['62297', 'POSTE DE CONCRETO <= 13M LM', 2.191]] }); },
     iniciarRegistro: function () { return new Promise(function (r) { setTimeout(function () { r('PASTA-TESTE'); }, 300); }); },
     salvarFoto: function (id, nome) { console.log('[teste] foto', nome); return new Promise(function (r) { setTimeout(function () { r('ok'); }, 150); }); },
     finalizarRegistro: function (id, d, nomes) {
@@ -2014,6 +2155,7 @@
       var r = await chamarCom(cod, 'entrar');
       gravarLS('registroCodigo', cod);
       gravarLS('registroEquipeNome', r.equipe);
+      carregarCodigosLocal();
       $('telaLogin').classList.remove('mostrar');
       aplicarEquipe();
       houveMudanca();
@@ -2133,6 +2275,7 @@
       $('obraConcluida').checked = !!d.obraConcluida;
       $('obraParcial').checked = !!d.obraParcial;
       if (d.servico) preencherServico(d.servico);
+      if (d.maoDeObra) renderMO(d.maoDeObra);
       $('observacoes').value = d.observacoes || '';
       var restaurar = function (g, comHastes) {
         var per = novoPeriodo();
